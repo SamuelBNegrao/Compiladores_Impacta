@@ -1,0 +1,89 @@
+Testes - casos-programa-c
+
+== Compilando o analisador léxico ==
+Executável gerado: ./scanner
+
+================================================================
+Caso: ../testes-scanner-minic_codes/casos-programas-c/c01_fibonacci.c
+Comando: ./scanner ../testes-scanner-minic_codes/casos-programas-c/c01_fibonacci.c 
+Resultado esperado: ../testes-scanner-minic_codes/casos-programas-c/c01_fibonacci.c.expected.jsonl
+OK: 85 token(s).
+RESULTADO: OK
+
+================================================================
+Caso: ../testes-scanner-minic_codes/casos-programas-c/c02_primos.c
+Comando: ./scanner ../testes-scanner-minic_codes/casos-programas-c/c02_primos.c 
+Resultado esperado: ../testes-scanner-minic_codes/casos-programas-c/c02_primos.c.expected.jsonl
+OK: 96 token(s).
+RESULTADO: OK
+
+================================================================
+Caso: ../testes-scanner-minic_codes/casos-programas-c/c03_media_vetor.c
+Comando: ./scanner ../testes-scanner-minic_codes/casos-programas-c/c03_media_vetor.c 
+Resultado esperado: ../testes-scanner-minic_codes/casos-programas-c/c03_media_vetor.c.expected.jsonl
+OK: 115 token(s).
+RESULTADO: OK
+
+================================================================
+Caso: ../testes-scanner-minic_codes/casos-programas-c/c04_menu_interativo.c
+Comando: ./scanner ../testes-scanner-minic_codes/casos-programas-c/c04_menu_interativo.c 
+Resultado esperado: ../testes-scanner-minic_codes/casos-programas-c/c04_menu_interativo.c.expected.jsonl
+OK: 95 token(s).
+RESULTADO: OK
+
+================================================================
+Caso: ../testes-scanner-minic_codes/casos-programas-c/c05_controle_temperatura.c
+Comando: ./scanner ../testes-scanner-minic_codes/casos-programas-c/c05_controle_temperatura.c 
+Resultado esperado: ../testes-scanner-minic_codes/casos-programas-c/c05_controle_temperatura.c.expected.jsonl
+OK: 61 token(s).
+RESULTADO: OK
+
+================================================================
+Resumo: 5 OK, 0 falharam, 0 avisos, 5 casos verificados.
+
+
+_______________________________________________________________________________
+Testes - casos-invalidos
+_______________________________________________________________________________
+
+== Compilando o analisador léxico ==
+Executável gerado: ./scanner
+
+================================================================
+Caso: ../testes-scanner-minic_codes/casos-invalidos/i01_simbolo_desconhecido.minic
+Comando: ./scanner ../testes-scanner-minic_codes/casos-invalidos/i01_simbolo_desconhecido.minic 
+Resultado esperado: ../testes-scanner-minic_codes/casos-invalidos/i01_simbolo_desconhecido.expected.jsonl
+OK: 6 token(s).
+RESULTADO: OK
+
+================================================================
+Caso: ../testes-scanner-minic_codes/casos-invalidos/i02_comentario_nao_terminado.minic
+Comando: ./scanner ../testes-scanner-minic_codes/casos-invalidos/i02_comentario_nao_terminado.minic 
+Resultado esperado: ../testes-scanner-minic_codes/casos-invalidos/i02_comentario_nao_terminado.expected.jsonl
+OK: 6 token(s).
+RESULTADO: OK
+
+================================================================
+Caso: ../testes-scanner-minic_codes/casos-invalidos/i03_caractere_nao_terminado.minic
+Comando: ./scanner ../testes-scanner-minic_codes/casos-invalidos/i03_caractere_nao_terminado.minic 
+Resultado esperado: ../testes-scanner-minic_codes/casos-invalidos/i03_caractere_nao_terminado.expected.jsonl
+OK: 9 token(s).
+RESULTADO: OK
+
+================================================================
+Caso: ../testes-scanner-minic_codes/casos-invalidos/i04_cadeia_nao_terminada.minic
+Comando: ./scanner ../testes-scanner-minic_codes/casos-invalidos/i04_cadeia_nao_terminada.minic 
+Resultado esperado: ../testes-scanner-minic_codes/casos-invalidos/i04_cadeia_nao_terminada.expected.jsonl
+OK: 5 token(s).
+RESULTADO: OK
+
+================================================================
+Caso: ../testes-scanner-minic_codes/casos-invalidos/i05_numero_real_malformado.minic
+Comando: ./scanner ../testes-scanner-minic_codes/casos-invalidos/i05_numero_real_malformado.minic 
+Resultado esperado: ../testes-scanner-minic_codes/casos-invalidos/i05_numero_real_malformado.expected.jsonl
+OK: 6 token(s).
+RESULTADO: OK
+AVISO: entrada correspondente não encontrada para ../testes-scanner-minic_codes/casos-invalidos/i06_identificador_iniciado_por_digito.expected.jsonl
+
+================================================================
+Resumo: 5 OK, 0 falharam, 1 avisos, 5 casos verificados.
