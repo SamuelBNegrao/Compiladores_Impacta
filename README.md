@@ -6,10 +6,14 @@ Repositório destinado aos projetos, atividades e trabalhos desenvolvidos na dis
 
 **Integrantes:**
 
-* `Nome do integrante 1`
-* `Nome do integrante 2`
-* `Nome do integrante 3`
-* `Nome do integrante 4`
+* `Arthur Silva Florentino`
+* `Guilherme de Almeida Cavalcante`
+* `Guilherme Gomes da Silva`
+* `José Henrique Ferreira Pereira`
+* `Natan Miguel Xavier de Araujo`
+* `Paulo Alberto Soares de Oliveira`
+* `Pier Giorgio Moreira Cesar`
+* `Samuel Bertozzi Negrão`
 
 ## 📚 Disciplina
 
@@ -21,32 +25,32 @@ Repositório destinado aos projetos, atividades e trabalhos desenvolvidos na dis
 
 Este repositório tem como objetivo armazenar e documentar os trabalhos e atividades realizados durante a disciplina, envolvendo conceitos relacionados à construção de compiladores, análise léxica, análise sintática e demais etapas do processo de compilação.
 
+---
+
 ## 📂 Estrutura do Projeto
 
 ```text
-📦 compiladores
- ┣ 📂 atividade-01
- ┣ 📂 atividade-02
- ┣ 📂 atividade-03
- ┣ 📂 projeto-final
+📦 src
+ ┣ 📂 LexerC
+ ┃ ┣ 📜 lexer_v2.c
+ ┃ ┣ 📜 test_scanner_c.sh
+ ┃ ┣ 📜 lexer_v2.exe
+ ┃ ┣ 📜 scanner.exe
+ ┃ ┗ 📂 resultados
+ ┃ ┃ ┣ 📜 execucao_testes.txt
+ ┃ ┃ ┣ 📜 casos-invalidos.jsonl
+ ┃ ┃ ┗ 📜 casos-programas-c.jsonl
+ ┣ 📂 LexerPython
+ ┃ ┣ 📜 lexer_v2.py
+ ┃ ┣ 📜 test_scanner_python.sh
+ ┃ ┗ 📂 resultados
+ ┃ ┃ ┣ 📜 execucao_testes.txt
+ ┃ ┃ ┣ 📜 casos-invalidos.jsonl
+ ┃ ┃ ┗ 📜 casos-programas-c.jsonl
+ ┣ 📂 testes-scanner-minic_codes
+ ┃ ┣ 📂 casos-invalidos
+ ┃ ┗ 📂 casos-programas-c
+ ┃ ┣ 📜 MANIFESTO.md
+ ┃ ┣ 📜 README.md
+ ┃ ┣ 📜 check_fixtures.py
  ┗ 📜 README.md
-```
-
-> A estrutura poderá ser atualizada conforme novas atividades forem desenvolvidas ao longo da disciplina.
-
-## 🛠️ Tecnologias
-
-* Python
-* Git
-* GitHub
-* Lex/Flex
-* Yacc/Bison *(se aplicável)*
-
-## 👨‍💻 Desenvolvimento
-
-Projeto desenvolvido para fins acadêmicos na disciplina de **Compiladores**.
-
----
-
-**Faculdade Impacta — Ciência da Computação**
-**Disciplina: Compiladores**
