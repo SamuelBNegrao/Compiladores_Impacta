@@ -3,18 +3,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdbool.h>
-
-// ESTRUTURA DO TOKEN
-typedef struct {
-    char tipo[32];
-    char lexema[256];
-    char atributo[256];
-    bool tem_atributo_num;
-    double atributo_num;
-    bool eh_null;
-    int linha;
-    int coluna;
-} Token;
+#include "lexer_v2.h"
 
 // MAPEAMENTOS
 typedef struct { const char *chave; const char *valor; } Par;
@@ -45,7 +34,7 @@ const Par DELIMITADORES[] = {
 
 // LEXER
 typedef struct {
-    char *codigo;
+    const char *codigo;
     int pos;
     int tamanho;
     int linha;
@@ -110,50 +99,62 @@ void emitir_json(Token t) {
     printf(", \"line\": %d, \"column\": %d}\n", t.linha, t.coluna);
 }
 
-void adicionar_token(Lexer *l, const char *tipo, const char *lexema, int linha, int coluna) {
-    (void)l;
-    Token t;
-    
-    if (strcmp(tipo, "IDENTIFICADOR") == 0) {
-        strcpy(t.tipo, "IDENT");
-    } else {
-        strcpy(t.tipo, tipo);
-    }
-    
-    strcpy(t.lexema, lexema);
+/* ---- Armazenamento em array (antes: imprimia direto via emitir_json) ---- */
 
-    t.linha = linha;
-    t.coluna = coluna;
-    t.tem_atributo_num = false;
-    t.eh_null = false;
+static void token_list_reservar(TokenList *lista, int minimo) {
+    if (lista->capacidade >= minimo) return;
+    int nova_cap = lista->capacidade == 0 ? 64 : lista->capacidade * 2;
+    while (nova_cap < minimo) nova_cap *= 2;
+    lista->itens = (Token *)realloc(lista->itens, nova_cap * sizeof(Token));
+    lista->capacidade = nova_cap;
+}
+
+void adicionar_token(TokenList *lista, const char *tipo, const char *lexema, int linha, int coluna) {
+    token_list_reservar(lista, lista->quantidade + 1);
+    Token *t = &lista->itens[lista->quantidade];
+
+    if (strcmp(tipo, "IDENTIFICADOR") == 0) {
+        strcpy(t->tipo, "IDENT");
+    } else {
+        strcpy(t->tipo, tipo);
+    }
+
+    strcpy(t->lexema, lexema);
+
+    t->linha = linha;
+    t->coluna = coluna;
+    t->tem_atributo_num = false;
+    t->eh_null = false;
+    t->atributo[0] = '\0';
+    t->atributo_num = 0.0;
 
     if (strcmp(tipo, "INT_LIT") == 0 || strcmp(tipo, "FLOAT_LIT") == 0) {
-        t.tem_atributo_num = true;
-        t.atributo_num = atof(lexema);
+        t->tem_atributo_num = true;
+        t->atributo_num = atof(lexema);
     } else if (strcmp(tipo, "CHAR_LIT") == 0 || strcmp(tipo, "STRING_LIT") == 0) {
         int len = strlen(lexema);
         if (len >= 2 && lexema[0] == lexema[len - 1] && (lexema[0] == '"' || lexema[0] == '\'')) {
-            strncpy(t.atributo, lexema + 1, len - 2);
-            t.atributo[len - 2] = '\0';
+            strncpy(t->atributo, lexema + 1, len - 2);
+            t->atributo[len - 2] = '\0';
         } else if (len >= 1 && (lexema[0] == '"' || lexema[0] == '\'')) {
-            strcpy(t.atributo, lexema + 1);
+            strcpy(t->atributo, lexema + 1);
         } else {
-            strcpy(t.atributo, lexema);
+            strcpy(t->atributo, lexema);
         }
-    } else if (strcmp(t.tipo, "IDENT") == 0) {
-        strcpy(t.atributo, lexema);
+    } else if (strcmp(t->tipo, "IDENT") == 0) {
+        strcpy(t->atributo, lexema);
     } else {
-        t.eh_null = true;
+        t->eh_null = true;
     }
 
-    emitir_json(t);
+    lista->quantidade++;
 }
 
-void analisar(Lexer *l) {
+void analisar(Lexer *l, TokenList *lista) {
     while (l->pos < l->tamanho) {
         char c = lexer_atual(l);
 
-        if (isspace(c)) {
+        if (isspace((unsigned char)c)) {
             lexer_avancar(l);
             continue;
         }
@@ -177,31 +178,31 @@ void analisar(Lexer *l) {
         }
 
         // Identificadores e Palavras Reservadas
-        if (isalpha(c) || c == '_') {
+        if (isalpha((unsigned char)c) || c == '_') {
             int l_ini = l->linha, c_ini = l->coluna, inicio = l->pos;
             lexer_avancar(l);
-            while (isalnum(lexer_atual(l)) || lexer_atual(l) == '_') lexer_avancar(l);
-            
+            while (isalnum((unsigned char)lexer_atual(l)) || lexer_atual(l) == '_') lexer_avancar(l);
+
             int len = l->pos - inicio;
             char lexema[256];
             strncpy(lexema, l->codigo + inicio, len);
             lexema[len] = '\0';
 
             const char *res = buscar_par(PALAVRAS_RESERVADAS, lexema);
-            adicionar_token(l, res ? res : "IDENTIFICADOR", lexema, l_ini, c_ini);
+            adicionar_token(lista, res ? res : "IDENTIFICADOR", lexema, l_ini, c_ini);
             continue;
         }
 
         // Números
-        if (isdigit(c)) {
+        if (isdigit((unsigned char)c)) {
             int l_ini = l->linha, c_ini = l->coluna, inicio = l->pos;
-            while (isdigit(lexer_atual(l))) lexer_avancar(l);
-            
+            while (isdigit((unsigned char)lexer_atual(l))) lexer_avancar(l);
+
             bool eh_float = false;
-            if (lexer_atual(l) == '.' && isdigit(lexer_proximo(l))) {
+            if (lexer_atual(l) == '.' && isdigit((unsigned char)lexer_proximo(l))) {
                 eh_float = true;
                 lexer_avancar(l);
-                while (isdigit(lexer_atual(l))) lexer_avancar(l);
+                while (isdigit((unsigned char)lexer_atual(l))) lexer_avancar(l);
             }
 
             int len = l->pos - inicio;
@@ -209,7 +210,7 @@ void analisar(Lexer *l) {
             strncpy(lexema, l->codigo + inicio, len);
             lexema[len] = '\0';
 
-            adicionar_token(l, eh_float ? "FLOAT_LIT" : "INT_LIT", lexema, l_ini, c_ini);
+            adicionar_token(lista, eh_float ? "FLOAT_LIT" : "INT_LIT", lexema, l_ini, c_ini);
             continue;
         }
 
@@ -217,7 +218,7 @@ void analisar(Lexer *l) {
         if (c == '\'') {
             int l_ini = l->linha, c_ini = l->coluna, inicio = l->pos;
             lexer_avancar(l);
-            
+
             while (l->pos < l->tamanho && lexer_atual(l) != '\'' && lexer_atual(l) != '\n') {
                 if (lexer_atual(l) == '\\') lexer_avancar(l);
                 lexer_avancar(l);
@@ -229,7 +230,7 @@ void analisar(Lexer *l) {
                 char lexema[256];
                 strncpy(lexema, l->codigo + inicio, len);
                 lexema[len] = '\0';
-                adicionar_token(l, "CHAR_LIT", lexema, l_ini, c_ini);
+                adicionar_token(lista, "CHAR_LIT", lexema, l_ini, c_ini);
             }
             continue;
         }
@@ -238,7 +239,7 @@ void analisar(Lexer *l) {
         if (c == '"') {
             int l_ini = l->linha, c_ini = l->coluna, inicio = l->pos;
             lexer_avancar(l);
-            
+
             while (l->pos < l->tamanho && lexer_atual(l) != '"' && lexer_atual(l) != '\n') {
                 // Interrompe se encontrar caracteres de fechamento de instrução sem fechar aspas
                 if (lexer_atual(l) == ')' || lexer_atual(l) == ';') {
@@ -254,7 +255,7 @@ void analisar(Lexer *l) {
                 char lexema[256];
                 strncpy(lexema, l->codigo + inicio, len);
                 lexema[len] = '\0';
-                adicionar_token(l, "STRING_LIT", lexema, l_ini, c_ini);
+                adicionar_token(lista, "STRING_LIT", lexema, l_ini, c_ini);
             }
             continue;
         }
@@ -265,7 +266,7 @@ void analisar(Lexer *l) {
         if (op_duplo) {
             int l_ini = l->linha, c_ini = l->coluna;
             lexer_avancar(l); lexer_avancar(l);
-            adicionar_token(l, op_duplo, duplo, l_ini, c_ini);
+            adicionar_token(lista, op_duplo, duplo, l_ini, c_ini);
             continue;
         }
 
@@ -275,7 +276,7 @@ void analisar(Lexer *l) {
         if (op_simples) {
             int l_ini = l->linha, c_ini = l->coluna;
             lexer_avancar(l);
-            adicionar_token(l, op_simples, simples, l_ini, c_ini);
+            adicionar_token(lista, op_simples, simples, l_ini, c_ini);
             continue;
         }
 
@@ -284,7 +285,7 @@ void analisar(Lexer *l) {
         if (del) {
             int l_ini = l->linha, c_ini = l->coluna;
             lexer_avancar(l);
-            adicionar_token(l, del, simples, l_ini, c_ini);
+            adicionar_token(lista, del, simples, l_ini, c_ini);
             continue;
         }
 
@@ -292,7 +293,24 @@ void analisar(Lexer *l) {
     }
 
     // Token obrigatório EOF
-    adicionar_token(l, "EOF", "", l->linha, l->coluna);
+    adicionar_token(lista, "EOF", "", l->linha, l->coluna);
+}
+
+/* ---- API pública (declarada em lexer_v2.h) — usada pelo main() abaixo
+ * e também pelo parser.c ---- */
+
+TokenList lexer_tokenizar(const char *codigo, int tamanho) {
+    TokenList lista = {0};
+    Lexer l = { codigo, 0, tamanho, 1, 1 };
+    analisar(&l, &lista);
+    return lista;
+}
+
+void token_list_liberar(TokenList *lista) {
+    free(lista->itens);
+    lista->itens = NULL;
+    lista->quantidade = 0;
+    lista->capacidade = 0;
 }
 
 int main(int argc, char *argv[]) {
@@ -310,9 +328,12 @@ int main(int argc, char *argv[]) {
     codigo[tamanho] = '\0';
     fclose(f);
 
-    Lexer l = {codigo, 0, tamanho, 1, 1};
-    analisar(&l);
+    TokenList lista = lexer_tokenizar(codigo, tamanho);
+    for (int i = 0; i < lista.quantidade; i++) {
+        emitir_json(lista.itens[i]);
+    }
 
+    token_list_liberar(&lista);
     free(codigo);
     return 0;
 }
