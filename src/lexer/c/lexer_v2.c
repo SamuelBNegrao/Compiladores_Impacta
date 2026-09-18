@@ -313,6 +313,7 @@ void token_list_liberar(TokenList *lista) {
     lista->capacidade = 0;
 }
 
+#ifndef LEXER_SEM_MAIN
 int main(int argc, char *argv[]) {
     if (argc < 2) return 1;
 
@@ -337,3 +338,4 @@ int main(int argc, char *argv[]) {
     free(codigo);
     return 0;
 }
+#endif

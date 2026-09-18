@@ -13,13 +13,13 @@
 # armazenados em <entrada>.errors.jsonl.
 
 
-SCANNER="${1:-scanner.py}"
+SCANNER_SOURCE="${1:-scanner.c}"
 TESTS_DIR="${2:-.}"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
+SCANNER_BINARY="./scanner"
 TOTAL=0
-PASSED=0
-FAILED=0
-SKIPPED=0
+PASS=0
+FAIL=0
+WARN=0
 
 compare_jsonl() {
     local actual="$1" expected_tokens="$2"
@@ -73,11 +73,11 @@ run_case() {
     local input="$1" expected="$2" label="${1#./}"
     TOTAL=$((TOTAL + 1))
     printf '\n================================================================\nCaso: %s\n' "$label"
-    printf 'Comando: %s %s %s\n' "$PYTHON_BIN" "$SCANNER" "$input"
+    printf 'Comando: %s %s %s\n' "$SCANNER_BINARY" "$input"
     printf 'Resultado esperado: %s\n' "$expected"
 
     set +e
-    "$PYTHON_BIN" "$SCANNER" "$input" > output.jsonl
+    "$SCANNER_BINARY" "$input" > output.jsonl
     status=$?
     set -e
 
@@ -93,6 +93,10 @@ run_case() {
         echo "Aviso: o scanner terminou com código $status."
     fi
 }
+
+printf '%s\n' '== Compilando o analisador léxico =='
+gcc -Wall -Wextra -std=c11 "$SCANNER_SOURCE" -o "$SCANNER_BINARY" || exit 1
+printf 'Executável gerado: %s\n' "$SCANNER_BINARY"
 
 mapfile -t expected_files < <(find "$TESTS_DIR" -type f -name '*.expected.jsonl' -print | sort)
 (( ${#expected_files[@]} > 0 )) || { echo "ERRO: nenhum resultado esperado para .c ou .minic foi encontrado." >&2; exit 2; }

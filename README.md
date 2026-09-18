@@ -30,27 +30,33 @@ Este repositório tem como objetivo armazenar e documentar os trabalhos e ativid
 ## 📂 Estrutura do Projeto
 
 ```text
-📦 src
- ┣ 📂 LexerC
- ┃ ┣ 📜 lexer_v2.c
- ┃ ┣ 📜 test_scanner_c.sh
- ┃ ┣ 📜 lexer_v2.exe
- ┃ ┣ 📜 scanner.exe
- ┃ ┗ 📂 resultados
- ┃ ┃ ┣ 📜 execucao_testes.txt
+📦 Compiladores_Impacta
+ ┣ 📂 artifacts
+ ┃ ┣ 📂 lexer-c
  ┃ ┃ ┣ 📜 casos-invalidos.jsonl
- ┃ ┃ ┗ 📜 casos-programas-c.jsonl
- ┣ 📂 LexerPython
- ┃ ┣ 📜 lexer_v2.py
- ┃ ┣ 📜 test_scanner_python.sh
- ┃ ┗ 📂 resultados
- ┃ ┃ ┣ 📜 execucao_testes.txt
- ┃ ┃ ┣ 📜 casos-invalidos.jsonl
- ┃ ┃ ┗ 📜 casos-programas-c.jsonl
- ┣ 📂 testes-scanner-minic_codes
- ┃ ┣ 📂 casos-invalidos
- ┃ ┗ 📂 casos-programas-c
- ┃ ┣ 📜 MANIFESTO.md
+ ┃ ┃ ┣ 📜 casos-programas-c.jsonl
+ ┃ ┃ ┗ 📜 execucao_testes.txt
+ ┃ ┗ 📂 lexer-python
+ ┃   ┣ 📜 casos-invalidos.jsonl
+ ┃   ┣ 📜 casos-programas-c.jsonl
+ ┃   ┗ 📜 execucao_testes.txt
+ ┣ 📂 src
  ┃ ┣ 📜 README.md
- ┃ ┣ 📜 check_fixtures.py
- ┗ 📜 README.md
+ ┃ ┣ 📂 lexer
+ ┃ ┃ ┣ 📂 c
+ ┃ ┃ ┃ ┣ 📜 lexer_v2.c
+ ┃ ┃ ┃ ┣ 📜 lexer_v2.h
+ ┃ ┃ ┃ ┣ 📜 test_scanner_c.sh
+ ┃ ┃ ┃ ┗ 📜 testar_parser_c.sh
+ ┃ ┃ ┗ 📂 python
+ ┃ ┃   ┣ 📜 lexer_v2.py
+ ┃ ┃   ┣ 📜 parser.py
+ ┃ ┃   ┗ 📜 test_scanner_python.sh
+ ┃ ┗ 📂 tests
+ ┃   ┗ 📂 minic
+ ┃     ┣ 📂 casos-invalidos
+ ┃     ┣ 📂 casos-programas-c
+ ┃     ┣ 📜 MANIFESTO.md
+ ┃     ┣ 📜 README.md
+ ┃     ┗ 📜 check_fixtures.py
+```

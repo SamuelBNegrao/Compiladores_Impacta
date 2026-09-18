@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # Testa o parser C com os casos .c e compara a saída com o resultado esperado.
 # Uso: ./testar_parser_c.sh [diretorio_dos_testes] [codigo_do_parser]
-# Exemplo: ./testar_parser_c.sh ./testes-parser-50 ./parser.c
+# Exemplo: ./testar_parser_c.sh ../../tests/parser-50 ./parser.c
 
 set -u
 TEST_DIR="${1:-.}"
 PARSER="${2:-./parser.c}"
 KEEP_TMP="${KEEP_TMP:-0}"
+LEXER_SOURCE="$(dirname "$PARSER")/lexer_v2.c"
+PARSER_BINARY="${PARSER%.c}"
 
-gcc -Wall -Wextra -std=c11 $PARSER -o "${PARSER/.c/}"
-PARSER="${PARSER/.c/}"
+gcc -Wall -Wextra -std=c11 -DLEXER_SEM_MAIN "$PARSER" "$LEXER_SOURCE" -o "$PARSER_BINARY"
+PARSER="$PARSER_BINARY"
 
 if [[ ! -d "$TEST_DIR" ]]; then
     echo "ERRO: diretório de testes não encontrado: $TEST_DIR" >&2

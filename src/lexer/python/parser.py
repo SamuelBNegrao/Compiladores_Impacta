@@ -240,6 +240,10 @@ class Parser:
     def parse_parametro(self):
         tipo = self.parse_tipo()
         nome = self.casar("IDENT", "identificador").lexema
+        if self.checar("LBRACKET"):
+            self.avancar()
+            self.parse_expr()
+            self.casar("RBRACKET")
         return (tipo, nome)
 
     def parse_funcao(self, tipo, nome):
@@ -286,6 +290,10 @@ class Parser:
             return self.parse_while()
         if self.checar("RETURN"):
             return self.parse_return()
+        if self.checar("PRINT"):
+            return self.parse_print()
+        if self.checar("READ"):
+            return self.parse_read()
         if self.atual().tipo in TIPOS:
             tipo = self.parse_tipo()
             nome = self.casar("IDENT", "identificador").lexema
@@ -293,6 +301,32 @@ class Parser:
         expr = self.parse_expr()
         self.casar("SEMICOLON")
         return ExprStmt(expr)
+
+    def parse_print(self):
+        self.casar("PRINT")
+        self.casar("LPAREN")
+        args = []
+        if not self.checar("RPAREN"):
+            args.append(self.parse_expr())
+            while self.checar("COMMA"):
+                self.avancar()
+                args.append(self.parse_expr())
+        self.casar("RPAREN", "argumento ou ')' ")
+        self.casar("SEMICOLON")
+        return ExprStmt(Call(Id("print"), args))
+
+    def parse_read(self):
+        self.casar("READ")
+        self.casar("LPAREN")
+        args = []
+        if not self.checar("RPAREN"):
+            args.append(self.parse_expr())
+            while self.checar("COMMA"):
+                self.avancar()
+                args.append(self.parse_expr())
+        self.casar("RPAREN", "argumento ou ')' ")
+        self.casar("SEMICOLON")
+        return ExprStmt(Call(Id("read"), args))
 
     def parse_if(self):
         self.casar("IF")
