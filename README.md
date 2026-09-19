@@ -43,15 +43,16 @@ Este repositório tem como objetivo armazenar e documentar os trabalhos e ativid
  ┣ 📂 src
  ┃ ┣ 📜 README.md
  ┃ ┣ 📂 lexer
+ ┃ ┃ ┣ 📜 lexer_v2.c
+ ┃ ┃ ┣ 📜 lexer_v2.h
+ ┃ ┃ ┣ 📜 lexer_v2.py
+ ┃ ┃ ┣ 📜 parser.c
+ ┃ ┃ ┣ 📜 parser.py
+ ┃ ┃ ┣ 📜 testar_parser_c.sh
+ ┃ ┃ ┣ 📜 testar_parser_python.sh
+ ┃ ┃ ┣ 📂 testes-parser-50
  ┃ ┃ ┣ 📂 c
- ┃ ┃ ┃ ┣ 📜 lexer_v2.c
- ┃ ┃ ┃ ┣ 📜 lexer_v2.h
- ┃ ┃ ┃ ┣ 📜 test_scanner_c.sh
- ┃ ┃ ┃ ┗ 📜 testar_parser_c.sh
  ┃ ┃ ┗ 📂 python
- ┃ ┃   ┣ 📜 lexer_v2.py
- ┃ ┃   ┣ 📜 parser.py
- ┃ ┃   ┗ 📜 test_scanner_python.sh
  ┃ ┗ 📂 tests
  ┃   ┗ 📂 minic
  ┃     ┣ 📂 casos-invalidos
