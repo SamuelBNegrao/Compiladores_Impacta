@@ -212,8 +212,63 @@ static char *node_text(Semantic *semantic, const Node *node) {
     size_t length;
     char *text;
     if (node == NULL) return copy_string("");
-    if (node->a != NULL && node->kind == N_ID) return copy_string(node->a);
-    if (node->b != NULL && node->kind == N_LIT) return copy_string(node->b);
+    if (node->kind == N_ID && node->a != NULL) return copy_string(node->a);
+    if (node->kind == N_LIT && node->b != NULL) return copy_string(node->b);
+    if (node->kind == N_BINARY) {
+        char *left_text = node_text(semantic, node->left);
+        char *right_text = node_text(semantic, node->right);
+        char *result = format_string("%s %s %s", left_text, node->a != NULL ? node->a : "", right_text);
+        free(left_text);
+        free(right_text);
+        return result;
+    }
+    if (node->kind == N_UNARY) {
+        char *operand_text = node_text(semantic, node->left);
+        char *result = format_string("%s%s", node->a != NULL ? node->a : "", operand_text);
+        free(operand_text);
+        return result;
+    }
+    if (node->kind == N_ASSIGN) {
+        char *left_text = node_text(semantic, node->left);
+        char *right_text = node_text(semantic, node->right);
+        char *result = format_string("%s = %s", left_text, right_text);
+        free(left_text);
+        free(right_text);
+        return result;
+    }
+    if (node->kind == N_INDEX) {
+        char *base_text = node_text(semantic, node->left);
+        char *index_text = node_text(semantic, node->right);
+        char *result = format_string("%s[%s]", base_text, index_text);
+        free(base_text);
+        free(index_text);
+        return result;
+    }
+    if (node->kind == N_CALL) {
+        char *callee_text = node_text(semantic, node->left);
+        size_t count = 0;
+        for (NodeList *item = node->items; item != NULL; item = item->next) count++;
+        char *result = NULL;
+        if (count == 0) {
+            result = format_string("%s()", callee_text);
+        } else {
+            size_t index = 0;
+            char *args = copy_string("");
+            for (NodeList *item = node->items; item != NULL; item = item->next) {
+                char *text_value = node_text(semantic, item->node);
+                char *next_args = index == 0 ? format_string("%s", text_value)
+                                            : format_string("%s, %s", args, text_value);
+                free(args);
+                free(text_value);
+                args = next_args;
+                index++;
+            }
+            result = format_string("%s(%s)", callee_text, args);
+            free(args);
+        }
+        free(callee_text);
+        return result;
+    }
     if (node->token_start < 0 || node->token_end <= node->token_start ||
         node->token_end > semantic->tokens->quantidade) return copy_string("");
     first = &semantic->tokens->itens[node->token_start];
@@ -233,6 +288,38 @@ static char *node_text(Semantic *semantic, const Node *node) {
     }
     return text != NULL ? text : copy_string("");
 }
+
+static bool node_kind_is(const Node *node, NodeKind kind) {
+    return node != NULL && node->kind == kind;
+}
+
+static Node *node_left(const Node *node) {
+    return node != NULL ? node->left : NULL;
+}
+
+static Node *node_right(const Node *node) {
+    return node != NULL ? node->right : NULL;
+}
+
+static Node *node_third(const Node *node) {
+    return node != NULL ? node->third : NULL;
+}
+
+static NodeList *node_items(const Node *node) {
+    return node != NULL ? node->items : NULL;
+}
+
+static Param *node_params(const Node *node) {
+    return node != NULL ? node->params : NULL;
+}
+
+static const char *node_name(const Node *node) {
+    if (node == NULL) return "";
+    if (node->kind == N_ID && node->a != NULL) return node->a;
+    if (node->b != NULL) return node->b;
+    return "";
+}
+
 
 static bool declare_symbol(Semantic *semantic, Symbol *symbol) {
     Symbol *previous;
@@ -271,54 +358,58 @@ static SemType semantic_target(Semantic *semantic, Node *node, const char *conte
 static bool semantic_stmt(Semantic *semantic, Node *node, char **fall_reason);
 
 static SemType semantic_index(Semantic *semantic, Node *node) {
-    SemType base_type = semantic_expr(semantic, node->left);
-    SemType index_type = semantic_value(semantic, node->right, "índice de vetor");
-    char *name = node_text(semantic, node->left);
+    Node *base = node_left(node);
+    Node *index = node_right(node);
+    SemType base_type = semantic_expr(semantic, base);
+    SemType index_type = semantic_value(semantic, index, "índice de vetor");
+    char *name = node_text(semantic, base);
     int line;
     int column;
     if (!is_error(base_type) && !base_type.array) {
-        node_position(semantic, node->left, &line, &column);
+        node_position(semantic, base, &line, &column);
         add_diagnostic(semantic, "SEM016", line, column,
                        "“%s” é do tipo %s e não pode ser indexado; apenas vetores aceitam índice.",
                        name, type_name(base_type));
         base_type = error_type();
     }
     if (!is_error(index_type) && strcmp(index_type.base, "int") != 0) {
-        node_position(semantic, node->right, &line, &column);
+        node_position(semantic, index, &line, &column);
         add_diagnostic(semantic, "SEM006", line, column,
                        "Índice do vetor “%s” deve ser int; recebeu %s (expressão “%s”).",
-                       name, type_name(index_type), node_text(semantic, node->right));
+                       name, type_name(index_type), node_text(semantic, index));
     }
+    free(name);
     return is_error(base_type) ? error_type() : make_type(base_type.base, false, 0);
 }
 
 static SemType semantic_call(Semantic *semantic, Node *node) {
-    Node *callee = node->left;
+    Node *callee = node_left(node);
+    NodeList *arguments = node_items(node);
     int actual_count = 0;
     int line;
     int column;
     SemType *actual_types;
     Symbol *symbol;
-    if (callee == NULL || callee->kind != N_ID) {
+    if (callee == NULL || !node_kind_is(callee, N_ID)) {
         if (callee != NULL) semantic_expr(semantic, callee);
         node_position(semantic, callee, &line, &column);
         add_diagnostic(semantic, "SEM018", line, column,
                        "A expressão “%s” não é uma função e não pode ser chamada.",
                        node_text(semantic, callee));
-        for (NodeList *item = node->items; item != NULL; item = item->next)
+        for (NodeList *item = arguments; item != NULL; item = item->next)
             semantic_value(semantic, item->node, "argumento de chamada");
         return error_type();
     }
-    for (NodeList *item = node->items; item != NULL; item = item->next) actual_count++;
+    for (NodeList *item = arguments; item != NULL; item = item->next) actual_count++;
     actual_types = actual_count > 0 ? (SemType *)calloc((size_t)actual_count, sizeof(SemType)) : NULL;
     int index = 0;
-    for (NodeList *item = node->items; item != NULL; item = item->next)
+    for (NodeList *item = arguments; item != NULL; item = item->next)
         actual_types[index++] = semantic_value(semantic, item->node, "argumento de chamada");
 
-    const char *name = callee->a != NULL ? callee->a : "";
+    const char *name = node_name(callee);
     if (strcmp(name, "print") == 0 || strcmp(name, "read") == 0) {
         index = 0;
-        for (NodeList *item = node->items; item != NULL; item = item->next) {
+        for (NodeList *item = arguments; item != NULL; item = item->next) {
             index++;
             if (strcmp(name, "print") == 0) {
                 SemType type = actual_types[index - 1];
@@ -358,7 +449,7 @@ static SemType semantic_call(Semantic *semantic, Node *node) {
                        symbol->parameter_count, symbol->parameter_count == 1 ? "" : "s", actual_count);
     } else {
         index = 0;
-        for (NodeList *item = node->items; item != NULL; item = item->next) {
+        for (NodeList *item = arguments; item != NULL; item = item->next) {
             SemType expected = symbol->parameters[index];
             SemType received = actual_types[index];
             if (!assignable(expected, received)) {
@@ -659,20 +750,27 @@ static bool semantic_branch(Semantic *semantic, Node *node, char **fall_reason) 
 }
 
 static bool semantic_if(Semantic *semantic, Node *node, char **fall_reason) {
+    Node *condition = node_left(node);
+    Node *then_branch = node_right(node);
+    Node *else_branch = node_third(node);
     char *condition_text;
     char *then_reason = NULL;
     char *else_reason = NULL;
     bool then_returns;
     bool else_returns;
-    semantic_condition(semantic, node->left, "if");
-    condition_text = node_text(semantic, node->left);
-    then_returns = semantic_branch(semantic, node->right, &then_reason);
-    if (node->third == NULL) {
+    semantic_condition(semantic, condition, "if");
+    condition_text = node_text(semantic, condition);
+    then_returns = semantic_branch(semantic, then_branch, &then_reason);
+    if (else_branch == NULL) {
         *fall_reason = format_string("o ramo em que “%s” é falso alcança o fim do corpo", condition_text);
+        free(condition_text);
         return false;
     }
-    else_returns = semantic_branch(semantic, node->third, &else_reason);
-    if (then_returns && else_returns) return true;
+    else_returns = semantic_branch(semantic, else_branch, &else_reason);
+    if (then_returns && else_returns) {
+        free(condition_text);
+        return true;
+    }
     if (!then_returns) {
         *fall_reason = then_reason != NULL && then_reason[0] != '\0' ? then_reason :
             format_string("o ramo em que “%s” é verdadeiro alcança o fim do corpo", condition_text);
@@ -680,6 +778,7 @@ static bool semantic_if(Semantic *semantic, Node *node, char **fall_reason) {
         *fall_reason = else_reason != NULL && else_reason[0] != '\0' ? else_reason :
             format_string("o ramo em que “%s” é falso alcança o fim do corpo", condition_text);
     }
+    free(condition_text);
     return false;
 }
 
@@ -729,17 +828,18 @@ static int compare_diagnostics(const void *left_pointer, const void *right_point
 }
 
 static void collect_function_signature(Semantic *semantic, Node *node) {
+    Param *parameter;
     int line;
     int column;
     int count = 0;
-    for (Param *parameter = node->params; parameter != NULL; parameter = parameter->next) count++;
+    for (parameter = node_params(node); parameter != NULL; parameter = parameter->next) count++;
     name_position(semantic, node, &line, &column);
-    Symbol *symbol = new_symbol(node->b, SYMBOL_FUNCTION, make_type(node->a, false, 0), line, column);
+    Symbol *symbol = new_symbol(node_name(node), SYMBOL_FUNCTION, make_type(node->a, false, 0), line, column);
     if (symbol == NULL) return;
     symbol->parameter_count = count;
     if (count > 0) symbol->parameters = (SemType *)calloc((size_t)count, sizeof(SemType));
     int index = 0;
-    for (Param *parameter = node->params; parameter != NULL; parameter = parameter->next) {
+    for (parameter = node_params(node); parameter != NULL; parameter = parameter->next) {
         SemType type = make_type(parameter->type, parameter->is_array != 0, 0);
         if (strcmp(parameter->type, "void") == 0) {
             add_diagnostic(semantic, "SEM014", parameter->line, parameter->column,
@@ -753,11 +853,11 @@ static void collect_function_signature(Semantic *semantic, Node *node) {
 }
 
 static void analyze_function(Semantic *semantic, Node *node) {
-    Symbol *symbol = lookup_symbol(semantic, node->b);
+    Symbol *symbol = lookup_symbol(semantic, node_name(node));
     if (symbol == NULL || symbol->kind != SYMBOL_FUNCTION) return;
     semantic->function = symbol;
     open_scope(semantic);
-    Param *parameter = node->params;
+    Param *parameter = node_params(node);
     int index = 0;
     while (parameter != NULL) {
         SemType type = symbol->parameters != NULL ? symbol->parameters[index] : error_type();
@@ -768,9 +868,9 @@ static void analyze_function(Semantic *semantic, Node *node) {
     }
     char *fall_reason = NULL;
     bool returns = true;
-    if (node->left != NULL) {
+    if (node_left(node) != NULL) {
         returns = false;
-        for (NodeList *item = node->left->items; item != NULL; item = item->next) {
+        for (NodeList *item = node_items(node_left(node)); item != NULL; item = item->next) {
             char *next_reason = NULL;
             if (semantic_stmt(semantic, item->node, &next_reason)) returns = true;
             else if (next_reason != NULL && next_reason[0] != '\0') fall_reason = next_reason;
