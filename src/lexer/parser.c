@@ -188,7 +188,7 @@ static Node *parse_var_rest(Parser *parser, char *type, char *name) {
     node->b = name;
     if (check(parser, "LBRACKET")) {
         advance_token(parser);
-        node->left = parse_expr(parser);
+        if (!check(parser, "RBRACKET")) node->left = parse_expr(parser);
         expect(parser, "RBRACKET", NULL);
     }
     if (check(parser, "ASSIGN")) {
@@ -210,7 +210,7 @@ static Param *parse_param(Parser *parser) {
     if (check(parser, "LBRACKET")) {
         is_array = true;
         advance_token(parser);
-        parse_expr(parser);
+        if (!check(parser, "RBRACKET")) parse_expr(parser);
         expect(parser, "RBRACKET", NULL);
     }
     Param *param = (Param *)malloc(sizeof(Param));

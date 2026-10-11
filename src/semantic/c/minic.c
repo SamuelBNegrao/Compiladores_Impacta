@@ -211,7 +211,10 @@ static char *node_text(Semantic *semantic, const Node *node) {
     size_t end;
     size_t length;
     char *text;
-    if (node == NULL || node->token_start < 0 || node->token_end <= node->token_start ||
+    if (node == NULL) return copy_string("");
+    if (node->a != NULL && node->kind == N_ID) return copy_string(node->a);
+    if (node->b != NULL && node->kind == N_LIT) return copy_string(node->b);
+    if (node->token_start < 0 || node->token_end <= node->token_start ||
         node->token_end > semantic->tokens->quantidade) return copy_string("");
     first = &semantic->tokens->itens[node->token_start];
     last = &semantic->tokens->itens[node->token_end - 1];
