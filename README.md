@@ -21,7 +21,7 @@ Repositório dos projetos e atividades desenvolvidos na disciplina de **Compilad
 
 ## Escopo e estado atual
 
-O fluxo implementado em Python é:
+O fluxo principal em Python é:
 
 ```text
 código-fonte -> lexer -> parser -> AST -> análise semântica -> diagnósticos
@@ -30,8 +30,8 @@ código-fonte -> lexer -> parser -> AST -> análise semântica -> diagnósticos
 - O lexer em C e em Python reconhece tokens, atributos léxicos e posições.
 - Os parsers em C e em Python constroem uma AST e identificam erros sintáticos.
 - O analisador semântico em Python percorre a AST, mantém escopos e verifica tipos, declarações, chamadas, vetores e retornos.
-- **O parser atualmente implementado é de descida recursiva (top-down), não um parser ascendente LR.** A implementação Python distribui a análise por métodos como `parse_expr`, `parse_additive` e `parse_primary`; o parser C também usa funções `parse_*`. Portanto, os testes do parser demonstram aceitação/rejeição e estrutura da AST, mas não demonstram análise ascendente, ações de shift/reduce ou uso de uma tabela LR.
-- A análise semântica calcula tipos durante a visita à AST e consulta uma pilha de tabelas de símbolos. Isso permite relacionar o código com atributos herdados e sintetizados, mas ainda não há uma especificação formal de atributos associada a cada produção da gramática nem uma demonstração de avaliação desses atributos no parser.
+- O parser usado pelo fluxo semântico existente ([`src/lexer/parser.py`](src/lexer/parser.py)) e o parser C são de descida recursiva. Também há agora uma implementação SLR(1) independente em [`src/lexer/parser_lr.py`](src/lexer/parser_lr.py), que usa uma tabela de estados, ações shift/reduce e reduções com ações semânticas para construir a mesma AST. Ambos os parsers Python são testados contra os mesmos casos.
+- O analisador semântico principal continua percorrendo a AST e consultando escopos. Para demonstrar formalmente atributos durante a análise ascendente, [`src/lexer/atributos_lr.py`](src/lexer/atributos_lr.py) aplica uma gramática SLR(1) de expressões aritméticas: o ambiente `amb` é recebido como atributo herdado e `tipo` é sintetizado em cada redução. Essa demonstração cobre expressões aritméticas, não substitui a análise semântica completa do MiniC.
 - A geração de código intermediário (IR) ainda não está documentada como etapa implementada neste README.
 
 ## Evidências de cobertura e resultados
@@ -41,10 +41,12 @@ Os pacotes de teste incluem entradas, resultados esperados e verificações auto
 | Etapa | Evidência | Critério verificado | Resultado executado |
 |---|---|---|---|
 | Parser Python | 50 casos: 25 válidos e 25 inválidos; AST esperada para cada caso válido | Status de aceitação/rejeição e comparação da AST nos válidos | **50/50 aprovados** |
+| Parser ascendente SLR(1) Python | O mesmo conjunto de 50 casos | Status de aceitação/rejeição e comparação da AST nos válidos | **50/50 aprovados** |
 | Parser C | O mesmo conjunto de 50 casos | Status de aceitação/rejeição e comparação da AST nos válidos | **50/50 aprovados** |
 | Análise semântica Python | 20 programas e arquivos `.gabarito` correspondentes | Saída completa de diagnósticos comparada com o gabarito | **20/20 aprovados** |
+| Atributos formais em expressões SLR(1) | Testes automatizados e traço de reduções para `x + 2 * y` | Consulta do ambiente herdado, precedência, tipos sintetizados, traço e regra de `%` | **6/6 testes automatizados aprovados** |
 
-Os resultados acima foram verificados nesta atualização. Os casos e gabaritos estão versionados, permitindo repetir as verificações. Eles demonstram a cobertura funcional descrita na tabela; não constituem, isoladamente, evidência de parser ascendente nem de uma gramática de atributos formalmente implementada.
+Os resultados acima foram verificados nesta atualização. Os casos e gabaritos estão versionados, permitindo repetir as verificações. A suíte de 50 programas mede a cobertura da sintaxe MiniC contemplada no corpus; os testes unitários da gramática de atributos cobrem adicionalmente precedência aritmética e cálculo de tipos. A demonstração de atributos é intencionalmente delimitada às expressões numéricas.
 
 ### Reproduzir parser — PowerShell
 
@@ -62,6 +64,15 @@ Resumo: 50 OK / 0 falharam / 50 total
 ```
 
 Nos 25 casos válidos, o runner compara a AST produzida com `ast.esperada.txt`. Nos outros 25, verifica que o parser rejeita a entrada. Para conferir o inventário e a descrição dos casos, consulte [`src/lexer/testes-parser-50/README.md`](src/lexer/testes-parser-50/README.md) e [`src/lexer/testes-parser-50/INDICE.txt`](src/lexer/testes-parser-50/INDICE.txt).
+
+### Reproduzir parser ascendente SLR(1)
+
+```powershell
+python .\src\lexer\run_tests_parser.py .\src\lexer\parser_lr.py .\src\lexer\testes-parser-50\casos
+python .\src\lexer\parser_lr.py .\src\lexer\testes-parser-50\casos\25_programa_integrado\codigo.c --trace
+```
+
+O primeiro comando deve terminar com `Resumo: 50 OK / 0 falharam / 50 total`. O segundo imprime a AST em `stdout` e as ações `shift`, `reduce` e `accept` em `stderr`, permitindo observar a análise ascendente. Em uma redução, o parser desempilha os símbolos do lado direito da produção, executa a ação semântica e consulta o estado de destino na tabela `goto`.
 
 ### Reproduzir análise semântica Python — PowerShell
 
@@ -85,25 +96,48 @@ Resultado esperado com o conjunto atual:
 20/20 casos aprovados
 ```
 
-## Atributos semânticos: modelo formal e relação com o código
+### Reproduzir demonstração de atributos
 
-Uma forma de formalizar a verificação de tipos é atribuir a cada expressão um atributo **sintetizado** `tipo`. A consulta ao ambiente de declarações é representada por um atributo **herdado** `amb`, recebido do contexto. Por exemplo, para expressões aritméticas:
-
-```text
-Produção: E -> E1 + E2
-Condição:  E1.tipo e E2.tipo são numéricos
-Regra:     E.tipo = float, se E1.tipo = float ou E2.tipo = float;
-           caso contrário, E.tipo = int.
-Erro:      se algum operando não for numérico.
-
-Produção: E -> id
-Regra:     E.tipo = buscar(E.amb, id.lexema).tipo
-Erro:      se id não estiver declarado em E.amb.
+```powershell
+python .\src\lexer\atributos_lr.py "x + 2 * y" --env "x=int,y=float" --trace
+python -m unittest discover -s .\src\lexer -p test_lr.py
 ```
 
-`tipo` é sintetizado a partir dos filhos da expressão; `amb` é herdado do contexto de análise. Na implementação Python, `expr` e os métodos `e_*` retornam instâncias de `Tipo`, enquanto `buscar` consulta os escopos ativos. Essa correspondência explica o cálculo semântico presente no código, mas o modelo acima é uma **formalização ilustrativa**, não uma gramática de atributos já executada pelo parser.
+O primeiro comando deve produzir a AST `Binary(+,Id(x),Binary(*,Lit(int,2),Id(y)))` e `tipo sintetizado: float`. O traço de reduções mostra `tipo=int` para `x` e `2`, `tipo=float` para `2 * y` e, por fim, `tipo=float` para a soma. O segundo comando executa os seis testes automatizados do parser e dos atributos.
 
-Para atender integralmente à demonstração solicitada de análise ascendente e atributos formais, ainda é necessário implementar ou integrar um parser LR (com gramática e ações/traços de shift-reduce), especificar as regras de atributos por produção e incluir evidências de execução que mostrem os atributos fluindo na análise. Até essa etapa, o projeto não deve ser descrito como tendo parser ascendente.
+## Atributos semânticos: especificação e avaliação
+
+Na demonstração, `amb` é um atributo **herdado**: o contexto fornece a tabela de identificadores e seus tipos, e o mesmo ambiente é propagado para os operandos. `tipo` é um atributo **sintetizado** pelas reduções, usando os atributos dos operandos. As regras implementadas para a gramática aritmética incluem:
+
+```text
+Expr -> Expr1 + Term
+    Expr1.amb = Expr.amb
+    Term.amb = Expr.amb
+    Expr.tipo = promover(Expr1.tipo, Term.tipo)
+
+Term -> Term1 * Factor
+    Term1.amb = Term.amb
+    Factor.amb = Term.amb
+    Term.tipo = promover(Term1.tipo, Factor.tipo)
+
+Factor -> id
+    Factor.tipo = lookup(Factor.amb, id.lexema)
+    Erro se id.lexema não pertencer a Factor.amb
+
+Term -> Term1 % Factor
+    Term1.amb = Term.amb
+    Factor.amb = Term.amb
+    Erro se Term1.tipo != int ou Factor.tipo != int
+    Term.tipo = int
+
+Regra de promoção:
+promover(int, int)     = int
+promover(float, int)   = float
+promover(int, float)   = float
+promover(float, float) = float
+```
+
+Em [`src/lexer/atributos_lr.py`](src/lexer/atributos_lr.py), a função `analisar` recebe explicitamente `amb`; a redução `Factor -> IDENT` consulta esse ambiente e cria `ExpressaoTipada`. Nas reduções aritméticas, a ação lê os tipos sintetizados dos filhos, verifica a regra e sintetiza o tipo do nó pai. O modo `--trace` exibe esses valores durante a execução, vinculando a especificação ao comportamento observável. A gramática completa do parser SLR(1) e suas ações que constroem a AST estão em [`src/lexer/parser_lr.py`](src/lexer/parser_lr.py); o algoritmo da tabela SLR(1) e da pilha shift/reduce está em [`src/lexer/lr.py`](src/lexer/lr.py).
 
 ## Estrutura do projeto
 
