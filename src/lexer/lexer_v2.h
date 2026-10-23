@@ -18,6 +18,10 @@ typedef struct {
     Token *itens;
     int quantidade;
     int capacidade;
+    int erros_lexicos;
+    int primeira_linha_erro;
+    int primeira_coluna_erro;
+    char primeiro_caractere_invalido;
 } TokenList;
 
 /* Executa a análise léxica completa sobre 'codigo' (buffer com 'tamanho'

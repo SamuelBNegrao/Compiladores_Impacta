@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""Build the C MiniC compiler and run the shared IR fixture suite."""
+
+from __future__ import annotations
+
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+
+HERE = Path(__file__).resolve().parent
+REPO = HERE.parents[2]
+SOURCE = HERE / "minic.c"
+SUITE = REPO / "src" / "semantic" / "python" / "testes-ir" / "testes"
+ERROR_EXIT_CODE = re.compile(r"código de saída\s+(\d+)", re.IGNORECASE)
+
+
+def main() -> int:
+    with tempfile.TemporaryDirectory(prefix="minic-ir-c-") as temp_dir:
+        compiler = Path(temp_dir) / "minic-ir-c.exe"
+        build = subprocess.run(
+            ["gcc", "-Wall", "-Wextra", "-std=c11", str(SOURCE), "-o", str(compiler)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+        if build.returncode != 0:
+            sys.stderr.write(build.stderr)
+            return build.returncode or 1
+
+        passed = 0
+        failed = 0
+        groups = (
+            ("01-validos-sem-otimizacao", 0),
+            ("03-otimizacoes", 0),
+            ("02-erros", None),
+        )
+        for group, fixed_code in groups:
+            for source in sorted((SUITE / group).glob("*/*.c")):
+                expected_code = fixed_code
+                if expected_code is None:
+                    reference = source.with_suffix(".txt").read_text(encoding="utf-8")
+                    match = ERROR_EXIT_CODE.search(reference)
+                    if match is None:
+                        print(f"[FALHA] {source.parent.name}: código esperado ausente")
+                        failed += 1
+                        continue
+                    expected_code = int(match.group(1))
+                result = subprocess.run(
+                    [str(compiler), "--ir", str(source)],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    check=False,
+                )
+                valid_output = expected_code != 0 or (
+                    "func main" in result.stdout and "endfunc" in result.stdout
+                )
+                if result.returncode == expected_code and valid_output:
+                    print(f"[OK] {source.parent.name}: código {expected_code}")
+                    passed += 1
+                else:
+                    details = (result.stderr or result.stdout).strip()
+                    print(
+                        f"[FALHA] {source.parent.name}: código {result.returncode}, "
+                        f"esperado {expected_code}. {details}"
+                    )
+                    failed += 1
+        flow_cases = {
+            "for_continue.c": (
+                "int main() { int i = 0; "
+                "for (; i < 3; i = i + 1) { "
+                "if (i == 1) continue; print(i); } return 0; }",
+                "goto L_increment_",
+            ),
+            "while_break.c": (
+                "int main() { int i = 0; while (i < 3) { "
+                "if (i == 1) break; i = i + 1; } return 0; }",
+                "goto L_end_",
+            ),
+        }
+        for filename, (source, required_instruction) in flow_cases.items():
+            fixture = Path(temp_dir) / filename
+            fixture.write_text(source, encoding="utf-8")
+            result = subprocess.run(
+                [str(compiler), "--ir", str(fixture)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            if result.returncode == 0 and required_instruction in result.stdout:
+                print(f"[OK] {filename}: fluxo de controle")
+                passed += 1
+            else:
+                print(f"[FALHA] {filename}: {result.stderr.strip() or result.stdout.strip()}")
+                failed += 1
+        print(f"\nResultado: {passed}/32 aprovados; {failed} falhas.")
+        print("O01–O10 foram compilados com -O0; suporte a -O1 não está implementado.")
+        return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

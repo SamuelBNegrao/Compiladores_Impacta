@@ -12,6 +12,9 @@ typedef enum {
     N_VARDECL,
     N_IF,
     N_WHILE,
+    N_FOR,
+    N_BREAK,
+    N_CONTINUE,
     N_RETURN,
     N_EXPRSTMT,
     N_ASSIGN,
@@ -358,6 +361,48 @@ static Node *parse_while(Parser *parser) {
     return node;
 }
 
+static Node *parse_for(Parser *parser) {
+    Node *node = new_node(N_FOR);
+    int start = parser->pos;
+    expect(parser, "FOR", NULL);
+    expect(parser, "LPAREN", NULL);
+    if (!check(parser, "SEMICOLON")) {
+        if (node != NULL) node->left = parse_expr(parser);
+        else parse_expr(parser);
+    }
+    expect(parser, "SEMICOLON", NULL);
+    if (!check(parser, "SEMICOLON")) {
+        if (node != NULL) node->right = parse_expr(parser);
+        else parse_expr(parser);
+    }
+    expect(parser, "SEMICOLON", NULL);
+    if (!check(parser, "RPAREN")) {
+        if (node != NULL) node->third = parse_expr(parser);
+        else parse_expr(parser);
+    }
+    expect(parser, "RPAREN", NULL);
+    Node *body = parse_stmt(parser);
+    if (node != NULL) {
+        node->items = (NodeList *)calloc(1, sizeof(NodeList));
+        if (node->items != NULL) node->items->node = body;
+        node->token_start = start;
+        node->token_end = parser->pos - 1;
+    }
+    return node;
+}
+
+static Node *parse_loop_control(Parser *parser, NodeKind kind) {
+    Node *node = new_node(kind);
+    int start = parser->pos;
+    advance_token(parser);
+    expect(parser, "SEMICOLON", NULL);
+    if (node != NULL) {
+        node->token_start = start;
+        node->token_end = parser->pos - 1;
+    }
+    return node;
+}
+
 static Node *parse_return(Parser *parser) {
     Node *node = new_node(N_RETURN);
     int start = parser->pos;
@@ -379,6 +424,9 @@ static Node *parse_stmt(Parser *parser) {
     if (check(parser, "LBRACE")) return parse_block(parser);
     if (check(parser, "IF")) return parse_if(parser);
     if (check(parser, "WHILE")) return parse_while(parser);
+    if (check(parser, "FOR")) return parse_for(parser);
+    if (check(parser, "BREAK")) return parse_loop_control(parser, N_BREAK);
+    if (check(parser, "CONTINUE")) return parse_loop_control(parser, N_CONTINUE);
     if (check(parser, "RETURN")) return parse_return(parser);
     if (check(parser, "PRINT")) return parse_print_or_read(parser, "PRINT", "print");
     if (check(parser, "READ")) return parse_print_or_read(parser, "READ", "read");
@@ -665,6 +713,9 @@ static void print_node(const Node *node) {
             break;
         case N_IF: printf("If("); print_node(node->left); printf(","); print_node(node->right); printf(","); if (node->third) print_node(node->third); else printf("NULL"); printf(")"); break;
         case N_WHILE: printf("While("); print_node(node->left); printf(","); print_node(node->right); printf(")"); break;
+        case N_FOR: printf("For("); print_node(node->left); printf(","); print_node(node->right); printf(","); print_node(node->third); printf(","); if (node->items) print_node(node->items->node); printf(")"); break;
+        case N_BREAK: printf("Break"); break;
+        case N_CONTINUE: printf("Continue"); break;
         case N_RETURN: printf("Return("); if (node->left) print_node(node->left); else printf("NULL"); printf(")"); break;
         case N_EXPRSTMT: printf("ExprStmt("); print_node(node->left); printf(")"); break;
         case N_ASSIGN: printf("Assign("); print_node(node->left); printf(","); print_node(node->right); printf(")"); break;

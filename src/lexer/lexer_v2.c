@@ -289,6 +289,12 @@ void analisar(Lexer *l, TokenList *lista) {
             continue;
         }
 
+        if (lista->erros_lexicos == 0) {
+            lista->primeira_linha_erro = l->linha;
+            lista->primeira_coluna_erro = l->coluna;
+            lista->primeiro_caractere_invalido = c;
+        }
+        lista->erros_lexicos++;
         lexer_avancar(l);
     }
 

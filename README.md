@@ -29,10 +29,10 @@ código-fonte -> lexer -> parser -> AST -> análise semântica -> diagnósticos
 
 - O lexer em C e em Python reconhece tokens, atributos léxicos e posições.
 - Os parsers em C e em Python constroem uma AST e identificam erros sintáticos.
-- O analisador semântico em Python percorre a AST, mantém escopos e verifica tipos, declarações, chamadas, vetores e retornos.
+- O analisador semântico em Python percorre a AST, mantém escopos e verifica tipos, declarações, chamadas, vetores, retornos e o uso contextual de `break`/`continue`.
 - O parser usado pelo fluxo semântico existente ([`src/lexer/parser.py`](src/lexer/parser.py)) e o parser C são de descida recursiva. Também há agora uma implementação SLR(1) independente em [`src/lexer/parser_lr.py`](src/lexer/parser_lr.py), que usa uma tabela de estados, ações shift/reduce e reduções com ações semânticas para construir a mesma AST. Ambos os parsers Python são testados contra os mesmos casos.
 - O analisador semântico principal continua percorrendo a AST e consultando escopos. Para demonstrar formalmente atributos durante a análise ascendente, [`src/lexer/atributos_lr.py`](src/lexer/atributos_lr.py) aplica uma gramática SLR(1) de expressões aritméticas: o ambiente `amb` é recebido como atributo herdado e `tipo` é sintetizado em cada redução. Essa demonstração cobre expressões aritméticas, não substitui a análise semântica completa do MiniC.
-- A geração de código intermediário (IR) ainda não está documentada como etapa implementada neste README.
+- Após a análise semântica, os compiladores em [`src/semantic/python/ir.py`](src/semantic/python/ir.py) e [`src/semantic/c/minic.c`](src/semantic/c/minic.c) geram uma representação intermediária de três endereços (`-O0`), com temporários e rótulos explícitos. Ambos cobrem funções, expressões, chamadas, vetores, condicionais, laços (`while`/`for`), `break`, `continue` e `return`. A otimização `-O1` ainda não está implementada.
 
 ## Evidências de cobertura e resultados
 
@@ -45,8 +45,12 @@ Os pacotes de teste incluem entradas, resultados esperados e verificações auto
 | Parser C | O mesmo conjunto de 50 casos | Status de aceitação/rejeição e comparação da AST nos válidos | **50/50 aprovados** |
 | Análise semântica Python | 20 programas e arquivos `.gabarito` correspondentes | Saída completa de diagnósticos comparada com o gabarito | **20/20 aprovados** |
 | Atributos formais em expressões SLR(1) | Testes automatizados e traço de reduções para `x + 2 * y` | Consulta do ambiente herdado, precedência, tipos sintetizados, traço e regra de `%` | **6/6 testes automatizados aprovados** |
+| IR Python em `-O0` | 20 programas válidos (10 básicos e 10 da categoria de otimização), 10 inválidos e 10 testes unitários | Compilação bem-sucedida e presença de `func main`/`endfunc` nos válidos; rejeição/categoria nos inválidos; testes unitários cobrem instruções e fluxo selecionados | **20 válidos aceitos; 10 inválidos rejeitados; 10 testes unitários aprovados** |
+| IR C em `-O0` | Mesma suíte de 30 casos e 2 verificações adicionais | Compilação bem-sucedida e presença de `main` nos válidos; códigos esperados nos inválidos; verificações dedicadas de `break` e `continue` | **32/32 verificações aprovadas** |
 
 Os resultados acima foram verificados nesta atualização. Os casos e gabaritos estão versionados, permitindo repetir as verificações. A suíte de 50 programas mede a cobertura da sintaxe MiniC contemplada no corpus; os testes unitários da gramática de atributos cobrem adicionalmente precedência aritmética e cálculo de tipos. A demonstração de atributos é intencionalmente delimitada às expressões numéricas.
+
+A suíte de 30 casos de IR está integrada em [`src/semantic/python/testes-ir/`](src/semantic/python/testes-ir/). Seus arquivos `.txt` descrevem critérios e IR canônicas de referência; os runners não comparam a IR produzida com essas referências. Eles verificam aceitação/rejeição, códigos de saída e, para entradas válidas, a presença de uma função `main` na saída. Os testes unitários Python e as verificações suplementares C cobrem alguns detalhes de instruções e fluxo, mas não equivalência semântica completa entre cada IR gerada e seu gabarito. Os casos O01–O10 são compilados apenas em `-O0`; suas otimizações `-O1` não foram avaliadas nem são anunciadas como implementadas.
 
 ### Reproduzir parser — PowerShell
 
@@ -95,6 +99,49 @@ Resultado esperado com o conjunto atual:
 ```text
 20/20 casos aprovados
 ```
+
+### Reproduzir geração de IR `-O0`
+
+Na raiz do repositório, execute os testes unitários da IR e compile um programa:
+
+```powershell
+python -m unittest discover -s .\src\semantic\python -p test_ir.py
+python .\src\semantic\python\minic.py .\caminho\para\programa.c -O0
+python .\src\semantic\python\minic.py .\caminho\para\programa.c --check
+```
+
+`-O0` (também o modo padrão e `--ir`) emite a IR; `--check` executa as etapas léxica, sintática e semântica sem emiti-la. A CLI retorna `0` para compilação/validação bem-sucedida, `2` para erro léxico, `3` para erro sintático e `4` para erro semântico. `-O1` retorna erro explícito enquanto as otimizações não estiverem disponíveis.
+
+#### O que significa `-O0` e `-O1`?
+
+O `O` é a letra “ó”, de *optimization* (otimização), não o algarismo zero. `-O0` indica compilar sem aplicar otimizações; neste projeto, é o nível que emite a IR básica. `-O1` costuma indicar um primeiro nível de otimizações, como propagação/dobra de constantes, eliminação de atribuições redundantes e código morto, preservando o comportamento observável do programa. O conjunto concreto de transformações varia conforme o compilador.
+
+Otimizações podem reduzir instruções e temporários, diminuir trabalho em tempo de execução e preparar melhor o código para etapas posteriores. Elas também tornam o compilador mais complexo e exigem testes para garantir que a versão otimizada mantenha a semântica da não otimizada. Neste projeto `-O1` ainda não está implementado: a CLI o rejeita explicitamente e os casos O01–O10 são usados apenas para confirmar que os programas de entrada compilam em `-O0`. Portanto, ainda não há evidência de que as transformações ou seus benefícios estejam implementados.
+
+Para executar os 30 casos integrados (20 válidos compilados em `-O0` e 10 inválidos verificados pela categoria esperada), rode:
+
+```powershell
+python .\src\semantic\python\run_ir_suite.py
+```
+
+O runner verifica o código de saída esperado e, para entradas válidas, que a saída contém uma função `main` delimitada por `func`/`endfunc`. Os arquivos `.txt` mantêm os critérios e IR canônicas para inspeção; o runner não compara a serialização textualmente. Os casos O01–O10 não executam `-O1`, que segue pendente.
+
+### Reproduzir geração de IR em C
+
+Com GCC e Python disponíveis, execute da raiz do repositório:
+
+```powershell
+python .\src\semantic\c\run_ir_suite.py
+```
+
+O runner compila `minic.c` em um diretório temporário e executa os mesmos 30 casos, além de duas verificações de `continue` e `break` em laços, sem deixar executáveis gerados no repositório. Também é possível compilar e invocar a CLI diretamente:
+
+```powershell
+gcc -Wall -Wextra -std=c11 .\src\semantic\c\minic.c -o .\src\semantic\c\minic.exe
+.\src\semantic\c\minic.exe --ir .\src\semantic\python\testes-ir\testes\01-validos-sem-otimizacao\P01\P01.c
+```
+
+Sem `--ir` ou `-O0`, a CLI C preserva a saída anterior de análise semântica. Com `--ir`/`-O0`, os códigos de saída são 0 (sucesso), 2 (léxico), 3 (sintático) e 4 (semântico). `--check` valida sem emitir IR; `-O1` informa que a otimização não foi implementada.
 
 ### Reproduzir demonstração de atributos
 
@@ -149,7 +196,16 @@ Compiladores_Impacta/
 ├── src/
 │   ├── lexer/                   # lexer e parsers C/Python
 │   │   └── testes-parser-50/    # casos de parser, ASTs esperadas e índice
-│   ├── semantic/                # análise semântica C/Python e runners
+│   ├── semantic/                # análise semântica, IR e runners
+│   │   ├── c/
+│   │   │   ├── minic.c          # compilador C e gerador de IR
+│   │   │   └── run_ir_suite.py  # runner C dos casos de IR
+│   │   └── python/
+│   │       ├── minic.py         # CLI integrada de compilação MiniC
+│   │       ├── ir.py            # gerador de IR de três endereços
+│   │       ├── run_ir_suite.py  # runner dos 30 casos integrados
+│   │       ├── testes-ir/       # fontes e referências da suíte de IR
+│   │       └── test_ir.py       # testes unitários da IR e CLI
 │   └── tests/
 │       ├── minic/               # fixtures de lexer e documentação
 │       └── semantic/            # 20 fontes semânticas e gabaritos

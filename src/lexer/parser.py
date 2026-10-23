@@ -88,6 +88,30 @@ class While(No):
         return f"While({self.condicao.sexpr()},{self.corpo.sexpr()})"
 
 
+class For(No):
+    def __init__(self, inicializacao, condicao, incremento, corpo):
+        self.inicializacao = inicializacao
+        self.condicao = condicao
+        self.incremento = incremento
+        self.corpo = corpo
+
+    def sexpr(self):
+        inicializacao = self.inicializacao.sexpr() if self.inicializacao else "NULL"
+        condicao = self.condicao.sexpr() if self.condicao else "NULL"
+        incremento = self.incremento.sexpr() if self.incremento else "NULL"
+        return f"For({inicializacao},{condicao},{incremento},{self.corpo.sexpr()})"
+
+
+class Break(No):
+    def sexpr(self):
+        return "Break"
+
+
+class Continue(No):
+    def sexpr(self):
+        return "Continue"
+
+
 class Return(No):
     def __init__(self, expr):
         self.expr = expr
@@ -288,6 +312,16 @@ class Parser:
             return self.parse_if()
         if self.checar("WHILE"):
             return self.parse_while()
+        if self.checar("FOR"):
+            return self.parse_for()
+        if self.checar("BREAK"):
+            self.avancar()
+            self.casar("SEMICOLON")
+            return Break()
+        if self.checar("CONTINUE"):
+            self.avancar()
+            self.casar("SEMICOLON")
+            return Continue()
         if self.checar("RETURN"):
             return self.parse_return()
         if self.checar("PRINT"):
@@ -347,6 +381,18 @@ class Parser:
         self.casar("RPAREN")
         corpo = self.parse_stmt()
         return While(condicao, corpo)
+
+    def parse_for(self):
+        self.casar("FOR")
+        self.casar("LPAREN")
+        inicializacao = None if self.checar("SEMICOLON") else self.parse_expr()
+        self.casar("SEMICOLON")
+        condicao = None if self.checar("SEMICOLON") else self.parse_expr()
+        self.casar("SEMICOLON")
+        incremento = None if self.checar("RPAREN") else self.parse_expr()
+        self.casar("RPAREN")
+        corpo = self.parse_stmt()
+        return For(inicializacao, condicao, incremento, corpo)
 
     def parse_return(self):
         self.casar("RETURN")

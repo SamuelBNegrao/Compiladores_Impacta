@@ -48,6 +48,7 @@ class Lexer:
         self.linha = 1
         self.coluna = 1
         self.tokens = []
+        self.erros = []
 
     def fim(self):
         return self.posicao >= len(self.codigo)
@@ -123,6 +124,12 @@ class Lexer:
             tipo = "FLOAT_LIT"
         else:
             tipo = "INT_LIT"
+            if self.atual() == ".":
+                linha, coluna = self.linha, self.coluna
+                self.avancar()
+                self.erros.append(
+                    (linha, coluna, "literal real malformado; esperado dígito após '.'")
+                )
         lexema = self.codigo[inicio:self.posicao]
         self.adicionar_token(tipo, lexema, linha_ini, coluna_ini)
 
@@ -139,6 +146,10 @@ class Lexer:
             self.avancar()
             lexema = self.codigo[inicio:self.posicao]
             self.adicionar_token("CHAR_LIT", lexema, linha_ini, coluna_ini)
+        else:
+            self.erros.append(
+                (linha_ini, coluna_ini, "literal de caractere não terminado")
+            )
 
     def ler_string(self):
         linha_ini, coluna_ini, inicio = self.linha, self.coluna, self.posicao
@@ -155,6 +166,10 @@ class Lexer:
             self.avancar()
             lexema = self.codigo[inicio:self.posicao]
             self.adicionar_token("STRING_LIT", lexema, linha_ini, coluna_ini)
+        else:
+            self.erros.append(
+                (linha_ini, coluna_ini, "literal de cadeia não terminado")
+            )
 
     def ignorar_comentario(self):
         if self.atual() == "/" and self.proximo() == "/":
@@ -162,6 +177,7 @@ class Lexer:
                 self.avancar()
             return True
         if self.atual() == "/" and self.proximo() == "*":
+            linha, coluna = self.linha, self.coluna
             self.avancar()
             self.avancar()
             while not self.fim():
@@ -170,6 +186,9 @@ class Lexer:
                     self.avancar()
                     return True
                 self.avancar()
+            self.erros.append(
+                (linha, coluna, "comentário de bloco não terminado")
+            )
         return False
 
     def ler_operador(self):
@@ -218,7 +237,11 @@ class Lexer:
             if caractere + self.proximo() in OPERADORES or caractere in OPERADORES:
                 self.ler_operador()
                 continue
+            linha, coluna = self.linha, self.coluna
             self.avancar()
+            self.erros.append(
+                (linha, coluna, f"símbolo {caractere!r} não reconhecido")
+            )
 
         # Token obrigatório EOF no final de cada arquivo
         self.adicionar_token("EOF", "", self.linha, self.coluna, atributo=None)

@@ -272,6 +272,7 @@ class AnalisadorSemantico:
         self.diagnosticos: list[Diagnostico] = []
         self.escopos: list[dict] = []
         self.funcao: Simbolo | None = None
+        self.loop_depth = 0
 
     # ---------------- infraestrutura ----------------
 
@@ -364,6 +365,7 @@ class AnalisadorSemantico:
 
     def _corpo_funcao(self, d, sim: Simbolo):
         self.funcao = sim
+        self.loop_depth = 0
         self.abrir()
         for p, tp in zip(d.parametros, sim.parametros):
             linha, coluna = self.pos_nome(p)
@@ -460,7 +462,32 @@ class AnalisadorSemantico:
             return self._if(no)
         if isinstance(no, P.While):
             self.condicao(no.condicao, "while")
-            self._ramo(no.corpo)
+            self.loop_depth += 1
+            try:
+                self._ramo(no.corpo)
+            finally:
+                self.loop_depth -= 1
+            return ""
+        if isinstance(no, P.For):
+            if no.inicializacao is not None:
+                self.expr(no.inicializacao)
+            if no.condicao is not None:
+                self.condicao(no.condicao, "for")
+            if no.incremento is not None:
+                self.expr(no.incremento)
+            self.loop_depth += 1
+            try:
+                self._ramo(no.corpo)
+            finally:
+                self.loop_depth -= 1
+            return ""
+        if isinstance(no, P.Break):
+            if self.loop_depth == 0:
+                self.erro("SEM020", "break só pode ocorrer dentro de while ou for.", no)
+            return ""
+        if isinstance(no, P.Continue):
+            if self.loop_depth == 0:
+                self.erro("SEM021", "continue só pode ocorrer dentro de while ou for.", no)
             return ""
         if isinstance(no, P.Return):
             self._return(no)
