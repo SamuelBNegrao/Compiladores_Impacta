@@ -32,7 +32,7 @@ código-fonte -> lexer -> parser -> AST -> análise semântica -> diagnósticos
 - O analisador semântico em Python percorre a AST, mantém escopos e verifica tipos, declarações, chamadas, vetores, retornos e o uso contextual de `break`/`continue`.
 - O parser usado pelo fluxo semântico existente ([`src/lexer/parser.py`](src/lexer/parser.py)) e o parser C são de descida recursiva. Também há agora uma implementação SLR(1) independente em [`src/lexer/parser_lr.py`](src/lexer/parser_lr.py), que usa uma tabela de estados, ações shift/reduce e reduções com ações semânticas para construir a mesma AST. Ambos os parsers Python são testados contra os mesmos casos.
 - O analisador semântico principal continua percorrendo a AST e consultando escopos. Para demonstrar formalmente atributos durante a análise ascendente, [`src/lexer/atributos_lr.py`](src/lexer/atributos_lr.py) aplica uma gramática SLR(1) de expressões aritméticas: o ambiente `amb` é recebido como atributo herdado e `tipo` é sintetizado em cada redução. Essa demonstração cobre expressões aritméticas, não substitui a análise semântica completa do MiniC.
-- Após a análise semântica, os compiladores em [`src/semantic/python/ir.py`](src/semantic/python/ir.py) e [`src/semantic/c/minic.c`](src/semantic/c/minic.c) geram uma representação intermediária de três endereços (`-O0`), com temporários e rótulos explícitos. Ambos cobrem funções, expressões, chamadas, vetores, condicionais, laços (`while`/`for`), `break`, `continue` e `return`. Em `-O1`, aplicam propagação e dobra de constantes, simplificação algébrica, propagação de cópias, eliminação de atribuições mortas e código inalcançável, subexpressões comuns locais, simplificação de condições constantes e movimento conservador de expressões invariantes de laço. Redução de força em variáveis de indução não é aplicada.
+- Após a análise semântica, os geradores em [`src/semantic/python/ir.py`](src/semantic/python/ir.py) e [`src/semantic/c/ir.c`](src/semantic/c/ir.c) emitem uma representação intermediária de três endereços (`-O0`), com temporários e rótulos explícitos. As CLIs integram essas etapas após a análise; no C, a AST compartilhada é definida em [`src/lexer/parser.h`](src/lexer/parser.h). O otimizador C fica isolado em [`src/semantic/c/optimizer.c`](src/semantic/c/optimizer.c), separado do gerador e da CLI. Ambos cobrem funções, expressões, chamadas, vetores, condicionais, laços (`while`/`for`), `break`, `continue` e `return`. Em `-O1`, aplicam propagação e dobra de constantes, simplificação algébrica, propagação de cópias, eliminação de atribuições mortas e código inalcançável, subexpressões comuns locais, simplificação de condições constantes e movimento conservador de expressões invariantes de laço. Redução de força em variáveis de indução não é aplicada.
 
 ## Evidências de cobertura e resultados
 
@@ -134,10 +134,10 @@ Com GCC e Python disponíveis, execute da raiz do repositório:
 python .\src\semantic\c\run_ir_suite.py
 ```
 
-O runner compila `minic.c` em um diretório temporário e executa os mesmos casos em `-O0` e os critérios O01–O10 em `-O1`, além de verificações de `continue`, `break`, combinações incompatíveis com `--check`, simplificação de expressão lógica e eliminação de subexpressão comum, sem deixar executáveis gerados no repositório. Também é possível compilar e invocar a CLI diretamente:
+O runner compila `minic.c`, `ir.c` e `optimizer.c` em um diretório temporário e executa os mesmos casos em `-O0` e os critérios O01–O10 em `-O1`, além de verificações de `continue`, `break`, combinações incompatíveis com `--check`, simplificação de expressão lógica e eliminação de subexpressão comum, sem deixar executáveis gerados no repositório. Também é possível compilar e invocar a CLI diretamente:
 
 ```powershell
-gcc -Wall -Wextra -std=c11 .\src\semantic\c\minic.c -o .\src\semantic\c\minic.exe
+gcc -Wall -Wextra -std=c11 .\src\semantic\c\minic.c .\src\semantic\c\ir.c .\src\semantic\c\optimizer.c -o .\src\semantic\c\minic.exe
 .\src\semantic\c\minic.exe --ir .\src\semantic\python\testes-ir\testes\01-validos-sem-otimizacao\P01\P01.c
 ```
 
@@ -195,10 +195,13 @@ Compiladores_Impacta/
 │   └── lexer-python/            # saídas e relatórios do scanner Python
 ├── src/
 │   ├── lexer/                   # lexer e parsers C/Python
+│   │   ├── parser.h             # AST compartilhada com o gerador de IR C
 │   │   └── testes-parser-50/    # casos de parser, ASTs esperadas e índice
 │   ├── semantic/                # análise semântica, IR e runners
 │   │   ├── c/
-│   │   │   ├── minic.c          # compilador C e gerador de IR
+│   │   │   ├── minic.c          # CLI e análise semântica do compilador C
+│   │   │   ├── ir.c / ir.h      # gerador C da IR
+│   │   │   ├── optimizer.c / optimizer.h # otimizador C da IR para -O1
 │   │   │   └── run_ir_suite.py  # runner C dos casos de IR
 │   │   └── python/
 │   │       ├── minic.py         # CLI integrada de compilação MiniC

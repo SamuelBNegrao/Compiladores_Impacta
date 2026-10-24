@@ -21,7 +21,17 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="minic-ir-c-") as temp_dir:
         compiler = Path(temp_dir) / "minic-ir-c.exe"
         build = subprocess.run(
-            ["gcc", "-Wall", "-Wextra", "-std=c11", str(SOURCE), "-o", str(compiler)],
+            [
+                "gcc",
+                "-Wall",
+                "-Wextra",
+                "-std=c11",
+                str(SOURCE),
+                str(HERE / "ir.c"),
+                str(HERE / "optimizer.c"),
+                "-o",
+                str(compiler),
+            ],
             capture_output=True,
             text=True,
             encoding="utf-8",
