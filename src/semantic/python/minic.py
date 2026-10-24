@@ -13,6 +13,7 @@ if _LEXER_DIR not in sys.path:
 
 from semantic import AnalisadorSemantico, ErroSintatico, Lexer, P, ParserPos
 from ir import GeradorIR
+from optimizer import optimize
 
 
 def _reportar_erros_lexer(lexer):
@@ -28,25 +29,23 @@ def _parser():
     parser.add_argument("--tokens", action="store_true", help="exibe tokens")
     parser.add_argument("--ast", action="store_true", help="exibe a AST")
     parser.add_argument("-O0", action="store_true", help="gera IR sem otimizações")
-    parser.add_argument(
-        "-O1", action="store_true", help="otimização ainda não disponível"
-    )
+    parser.add_argument("-O1", action="store_true", help="gera IR otimizada")
     return parser
 
 
 def main(argv=None):
     args = _parser().parse_args(argv)
-    if args.O1:
-        print("Erro: otimização -O1 ainda não está implementada.", file=sys.stderr)
+    if args.O1 and args.O0:
+        print("Erro: -O0 e -O1 são mutuamente exclusivos.", file=sys.stderr)
         return 1
-    if args.tokens and (args.ast or args.ir or args.check):
+    if args.tokens and (args.ast or args.ir or args.check or args.O0 or args.O1):
         print("Erro: --tokens não pode ser combinado com outras opções.", file=sys.stderr)
         return 1
-    if args.ast and (args.ir or args.check):
-        print("Erro: --ast não pode ser combinado com --ir ou --check.", file=sys.stderr)
+    if args.ast and (args.ir or args.check or args.O0 or args.O1):
+        print("Erro: --ast não pode ser combinado com opções de geração de IR.", file=sys.stderr)
         return 1
-    if args.ir and args.check:
-        print("Erro: --ir não pode ser combinado com --check.", file=sys.stderr)
+    if args.check and (args.ir or args.O0 or args.O1):
+        print("Erro: --check não pode ser combinado com opções de geração de IR.", file=sys.stderr)
         return 1
 
     try:
@@ -103,7 +102,10 @@ def main(argv=None):
         print("Análise concluída: programa aceito.")
         return 0
 
-    print(GeradorIR().gerar(program), end="")
+    intermediate = GeradorIR().gerar(program)
+    if args.O1:
+        intermediate = optimize(intermediate)
+    print(intermediate, end="")
     return 0
 
 

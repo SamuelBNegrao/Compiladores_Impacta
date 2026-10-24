@@ -70,6 +70,49 @@ def run_error_cases(directory: Path) -> tuple[int, int]:
     return passed, failed
 
 
+def run_optimization_cases(directory: Path) -> tuple[int, int]:
+    criteria = {
+        "O01": lambda output: "print 20" in output,
+        "O02": lambda output: "print 13" in output,
+        "O03": lambda output: "print 6" in output,
+        "O04": lambda output: "temporario" not in output,
+        "O05": lambda output: "print 22" in output and "print 23" in output,
+        "O06": lambda output: "print 10" in output,
+        "O07": lambda output: "print 11" in output and "print 22" not in output,
+        "O08": lambda output: "t2 = 42" in output
+        and output.index("t2 = 42") < output.index("L_test:"),
+        "O09": lambda output: "L_test:" in output and "print" in output,
+        "O10": lambda output: "print 99" not in output,
+    }
+    passed = 0
+    failed = 0
+    for source in sorted(directory.glob("*/*.c")):
+        result = subprocess.run(
+            [sys.executable, str(COMPILER), str(source), "-O1"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+        criterion = criteria.get(source.stem)
+        valid = (
+            result.returncode == 0
+            and "func main" in result.stdout
+            and "endfunc" in result.stdout
+            and criterion is not None
+            and criterion(result.stdout)
+        )
+        if valid:
+            print(f"[OK] {source.stem}: critério de otimização")
+            passed += 1
+        else:
+            detail = (result.stderr or result.stdout).strip()
+            print(f"[FALHA] {source.stem}: {detail or 'critério não atendido'}")
+            failed += 1
+    return passed, failed
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -85,21 +128,22 @@ def main() -> int:
     valid_passed, valid_failed = run_valid_cases(
         args.suite / "01-validos-sem-otimizacao"
     )
-    optimization_passed, optimization_failed = run_valid_cases(
+    optimization_o0_passed, optimization_o0_failed = run_valid_cases(
+        args.suite / "03-otimizacoes"
+    )
+    optimization_passed, optimization_failed = run_optimization_cases(
         args.suite / "03-otimizacoes"
     )
     errors_passed, errors_failed = run_error_cases(args.suite / "02-erros")
 
-    total_passed = valid_passed + optimization_passed + errors_passed
-    total_failed = valid_failed + optimization_failed + errors_failed
+    total_passed = valid_passed + optimization_o0_passed + optimization_passed + errors_passed
+    total_failed = valid_failed + optimization_o0_failed + optimization_failed + errors_failed
     print(
         "\nResultado: "
-        f"{total_passed}/30 entradas aceitas/rejeitadas conforme esperado; "
-        f"{total_failed} falhas."
+        f"{total_passed}/40 verificações aprovadas; {total_failed} falhas."
     )
     print(
-        "Os casos O01–O10 foram compilados em -O0; "
-        "a validação das otimizações -O1 permanece pendente."
+        "O09 aceita qualquer IR -O1 válida, pois redução de força é opcional."
     )
     return 1 if total_failed else 0
 

@@ -1,5 +1,6 @@
 #include <stdarg.h>
 #include <stdbool.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,6 +9,8 @@
 #include "../../lexer/lexer_v2.c"
 #define PARSER_SEMANTIC_LIBRARY
 #include "../../lexer/parser.c"
+#include "ir.h"
+#include "optimizer.h"
 
 typedef struct {
     char base[20];
@@ -964,438 +967,45 @@ static void print_diagnostics(Semantic *semantic) {
     }
 }
 
-typedef struct {
-    char original[256];
-    char emitted[256];
-} IRBinding;
-
-typedef struct {
-    IRBinding bindings[128];
-    int count;
-} IRScope;
-
-typedef struct {
-    int next_temp;
-    int next_label;
-    int next_shadow;
-    IRScope scopes[64];
-    int scope_count;
-    char *break_labels[64];
-    char *continue_labels[64];
-    int loop_count;
-} IRGenerator;
-
-static char *ir_temp(IRGenerator *generator) {
-    return format_string("t%d", ++generator->next_temp);
-}
-
-static char *ir_label(IRGenerator *generator, const char *base) {
-    return format_string("L_%s_%d", base, ++generator->next_label);
-}
-
-static void ir_emit(const char *format, ...) {
-    va_list args;
-    va_start(args, format);
-    printf("  ");
-    vprintf(format, args);
-    putchar('\n');
-    va_end(args);
-}
-
-static void ir_emit_label(const char *label) {
-    printf("%s:\n", label);
-}
-
-static void ir_push_scope(IRGenerator *generator) {
-    if (generator->scope_count < (int)(sizeof(generator->scopes) / sizeof(generator->scopes[0]))) {
-        memset(&generator->scopes[generator->scope_count], 0, sizeof(IRScope));
-        generator->scope_count++;
-    }
-}
-
-static void ir_pop_scope(IRGenerator *generator) {
-    if (generator->scope_count > 0) generator->scope_count--;
-}
-
-static char *ir_declare(IRGenerator *generator, const char *name) {
-    bool shadows = false;
-    for (int scope = generator->scope_count - 2; scope >= 0; scope--) {
-        for (int index = generator->scopes[scope].count - 1; index >= 0; index--) {
-            if (strcmp(generator->scopes[scope].bindings[index].original, name) == 0) {
-                shadows = true;
-                break;
-            }
-        }
-        if (shadows) break;
-    }
-    char *emitted = shadows
-        ? format_string("%s#%d", name, ++generator->next_shadow)
-        : copy_string(name);
-    if (generator->scope_count > 0) {
-        IRScope *scope = &generator->scopes[generator->scope_count - 1];
-        if (scope->count < (int)(sizeof(scope->bindings) / sizeof(scope->bindings[0]))) {
-            IRBinding *binding = &scope->bindings[scope->count++];
-            snprintf(binding->original, sizeof(binding->original), "%s", name);
-            snprintf(binding->emitted, sizeof(binding->emitted), "%s", emitted);
-        }
-    }
-    return emitted;
-}
-
-static char *ir_lookup(IRGenerator *generator, const char *name) {
-    for (int scope = generator->scope_count - 1; scope >= 0; scope--) {
-        for (int index = generator->scopes[scope].count - 1; index >= 0; index--) {
-            IRBinding *binding = &generator->scopes[scope].bindings[index];
-            if (strcmp(binding->original, name) == 0) return copy_string(binding->emitted);
-        }
-    }
-    return copy_string(name);
-}
-
-static char *ir_expr(IRGenerator *generator, Node *node);
-static char *ir_lvalue(IRGenerator *generator, Node *node);
-static void ir_stmt(IRGenerator *generator, Node *node);
-
-static char *ir_lvalue(IRGenerator *generator, Node *node) {
-    if (node == NULL) return copy_string("");
-    if (node->kind == N_ID) return ir_lookup(generator, node->a);
-    if (node->kind == N_INDEX) {
-        char *base = ir_expr(generator, node->left);
-        char *index = ir_expr(generator, node->right);
-        char *scaled = ir_temp(generator);
-        ir_emit("%s = %s * 1", scaled, index);
-        char *address = format_string("%s[%s]", base, scaled);
-        free(base);
-        free(index);
-        free(scaled);
-        return address;
-    }
-    return copy_string("");
-}
-
-static void ir_builtin(IRGenerator *generator, Node *call) {
-    const char *name = node_name(call->left);
-    for (NodeList *item = call->items; item != NULL; item = item->next) {
-        if (strcmp(name, "read") == 0) {
-            char *target = ir_lvalue(generator, item->node);
-            ir_emit("read %s", target);
-            free(target);
-        } else {
-            char *value = ir_expr(generator, item->node);
-            ir_emit("print %s", value);
-            free(value);
-        }
-    }
-}
-
-static char *ir_expr(IRGenerator *generator, Node *node) {
-    if (node == NULL) return copy_string("");
-    if (node->kind == N_LIT) {
-        if (strcmp(node->a, "char") == 0)
-            return format_string("'%s'", node->b != NULL ? node->b : "");
-        if (strcmp(node->a, "string") == 0)
-            return format_string("\"%s\"", node->b != NULL ? node->b : "");
-        return copy_string(node->b != NULL ? node->b : "");
-    }
-    if (node->kind == N_ID) return ir_lookup(generator, node->a);
-    if (node->kind == N_INDEX) {
-        char *address = ir_lvalue(generator, node);
-        char *result = ir_temp(generator);
-        ir_emit("%s = load %s", result, address);
-        free(address);
-        return result;
-    }
-    if (node->kind == N_ASSIGN) {
-        char *value = ir_expr(generator, node->right);
-        char *target = ir_lvalue(generator, node->left);
-        if (node->left != NULL && node->left->kind == N_INDEX)
-            ir_emit("store %s, %s", target, value);
-        else
-            ir_emit("%s = %s", target, value);
-        free(value);
-        return target;
-    }
-    if (node->kind == N_UNARY) {
-        char *operand = ir_expr(generator, node->left);
-        char *result = ir_temp(generator);
-        ir_emit("%s = %s %s", result, strcmp(node->a, "!") == 0 ? "not" : "neg", operand);
-        free(operand);
-        return result;
-    }
-    if (node->kind == N_BINARY) {
-        char *left = ir_expr(generator, node->left);
-        char *right = ir_expr(generator, node->right);
-        char *result = ir_temp(generator);
-        const char *op = strcmp(node->a, "&&") == 0 ? "and" :
-                         strcmp(node->a, "||") == 0 ? "or" : node->a;
-        ir_emit("%s = %s %s %s", result, left, op, right);
-        free(left);
-        free(right);
-        return result;
-    }
-    if (node->kind == N_CALL) {
-        if (node->left != NULL && node->left->kind == N_ID &&
-            (strcmp(node->left->a, "print") == 0 || strcmp(node->left->a, "read") == 0)) {
-            ir_builtin(generator, node);
-            return copy_string("");
-        }
-        int count = 0;
-        for (NodeList *item = node->items; item != NULL; item = item->next) {
-            char *argument = ir_expr(generator, item->node);
-            ir_emit("param %s", argument);
-            free(argument);
-            count++;
-        }
-        char *callee = ir_expr(generator, node->left);
-        char *result = ir_temp(generator);
-        ir_emit("%s = call %s, %d", result, callee, count);
-        free(callee);
-        return result;
-    }
-    return copy_string("");
-}
-
-static bool ir_contains_continue(Node *node) {
-    if (node == NULL) return false;
-    if (node->kind == N_CONTINUE) return true;
-    if (node->kind == N_WHILE || node->kind == N_FOR) return false;
-    if (node->kind == N_BLOCK) {
-        for (NodeList *item = node->items; item != NULL; item = item->next)
-            if (ir_contains_continue(item->node)) return true;
-    } else if (node->kind == N_IF) {
-        return ir_contains_continue(node->right) || ir_contains_continue(node->third);
-    }
-    return false;
-}
-
-static void ir_block(IRGenerator *generator, Node *node, bool new_scope) {
-    if (new_scope) ir_push_scope(generator);
-    if (node != NULL) {
-        for (NodeList *item = node->items; item != NULL; item = item->next)
-            ir_stmt(generator, item->node);
-    }
-    if (new_scope) ir_pop_scope(generator);
-}
-
-static void ir_branch(IRGenerator *generator, Node *node) {
-    if (node != NULL && node->kind == N_BLOCK) {
-        ir_block(generator, node, true);
-    } else {
-        ir_push_scope(generator);
-        ir_stmt(generator, node);
-        ir_pop_scope(generator);
-    }
-}
-
-static void ir_if(IRGenerator *generator, Node *node) {
-    char *condition = ir_expr(generator, node->left);
-    if (node->third == NULL) {
-        char *end = ir_label(generator, "end_if");
-        ir_emit("ifFalse %s goto %s", condition, end);
-        ir_branch(generator, node->right);
-        ir_emit_label(end);
-        free(end);
-    } else {
-        char *alternative = ir_label(generator, "else");
-        char *end = ir_label(generator, "end_if");
-        ir_emit("ifFalse %s goto %s", condition, alternative);
-        ir_branch(generator, node->right);
-        ir_emit("goto %s", end);
-        ir_emit_label(alternative);
-        ir_branch(generator, node->third);
-        ir_emit_label(end);
-        free(alternative);
-        free(end);
-    }
-    free(condition);
-}
-
-static void ir_while(IRGenerator *generator, Node *node) {
-    char *test = ir_label(generator, "test");
-    char *end = ir_label(generator, "end");
-    ir_emit_label(test);
-    char *condition = ir_expr(generator, node->left);
-    ir_emit("ifFalse %s goto %s", condition, end);
-    free(condition);
-    generator->break_labels[generator->loop_count] = end;
-    generator->continue_labels[generator->loop_count] = test;
-    generator->loop_count++;
-    ir_branch(generator, node->right);
-    generator->loop_count--;
-    ir_emit("goto %s", test);
-    ir_emit_label(end);
-    free(test);
-    free(end);
-}
-
-static void ir_for(IRGenerator *generator, Node *node) {
-    if (node->left != NULL) {
-        char *initial = ir_expr(generator, node->left);
-        free(initial);
-    }
-    char *test = ir_label(generator, "test");
-    char *end = ir_label(generator, "end");
-    bool has_continue = node->items != NULL && ir_contains_continue(node->items->node);
-    char *increment = has_continue ? ir_label(generator, "increment") : copy_string(test);
-    ir_emit_label(test);
-    if (node->right != NULL) {
-        char *condition = ir_expr(generator, node->right);
-        ir_emit("ifFalse %s goto %s", condition, end);
-        free(condition);
-    }
-    generator->break_labels[generator->loop_count] = end;
-    generator->continue_labels[generator->loop_count] = increment;
-    generator->loop_count++;
-    if (node->items != NULL) ir_branch(generator, node->items->node);
-    generator->loop_count--;
-    if (has_continue) ir_emit_label(increment);
-    if (node->third != NULL) {
-        char *step = ir_expr(generator, node->third);
-        free(step);
-    }
-    ir_emit("goto %s", test);
-    ir_emit_label(end);
-    free(test);
-    free(end);
-    free(increment);
-}
-
-static void ir_stmt(IRGenerator *generator, Node *node) {
-    if (node == NULL) return;
-    switch (node->kind) {
-        case N_BLOCK:
-            ir_block(generator, node, true);
-            break;
-        case N_VARDECL: {
-            char *target = ir_declare(generator, node->b);
-            if (node->right != NULL) {
-                char *value = ir_expr(generator, node->right);
-                ir_emit("%s = %s", target, value);
-                free(value);
-            }
-            free(target);
-            break;
-        }
-        case N_EXPRSTMT:
-            if (node->left != NULL && node->left->kind == N_CALL &&
-                node->left->left != NULL && node->left->left->kind == N_ID &&
-                (strcmp(node->left->left->a, "print") == 0 ||
-                 strcmp(node->left->left->a, "read") == 0)) {
-                ir_builtin(generator, node->left);
-            } else {
-                char *value = ir_expr(generator, node->left);
-                free(value);
-            }
-            break;
-        case N_IF:
-            ir_if(generator, node);
-            break;
-        case N_WHILE:
-            ir_while(generator, node);
-            break;
-        case N_FOR:
-            ir_for(generator, node);
-            break;
-        case N_BREAK:
-            if (generator->loop_count > 0)
-                ir_emit("goto %s", generator->break_labels[generator->loop_count - 1]);
-            break;
-        case N_CONTINUE:
-            if (generator->loop_count > 0)
-                ir_emit("goto %s", generator->continue_labels[generator->loop_count - 1]);
-            break;
-        case N_RETURN:
-            if (node->left == NULL) {
-                ir_emit("return");
-            } else {
-                char *value = ir_expr(generator, node->left);
-                ir_emit("return %s", value);
-                free(value);
-            }
-            break;
-        default:
-            break;
-    }
-}
-
-static bool generate_ir(Node *program) {
-    IRGenerator *generator = (IRGenerator *)calloc(1, sizeof(IRGenerator));
-    if (generator == NULL) {
-        fprintf(stderr, "Erro: memória insuficiente para inicializar a geração de IR.\n");
-        return false;
-    }
-    ir_push_scope(generator);
-    for (NodeList *item = program->items; item != NULL; item = item->next) {
-        if (item->node->kind == N_VARDECL) {
-            char *name = ir_declare(generator, item->node->b);
-            free(name);
-        }
-    }
-    for (NodeList *item = program->items; item != NULL; item = item->next) {
-        Node *node = item->node;
-        if (node->kind == N_VARDECL) {
-            if (node->right != NULL) {
-                char *value = ir_expr(generator, node->right);
-                printf("global %s = %s\n", node->b, value);
-                free(value);
-            }
-        } else if (node->kind == N_FUNCTION) {
-            generator->next_temp = 0;
-            generator->next_label = 0;
-            generator->next_shadow = 0;
-            generator->loop_count = 0;
-            ir_push_scope(generator);
-            printf("func %s", node->b);
-            if (node->params != NULL) {
-                putchar('(');
-                for (Param *param = node->params; param != NULL; param = param->next) {
-                    if (param != node->params) printf(", ");
-                    printf("%s", param->name);
-                    char *emitted = ir_declare(generator, param->name);
-                    free(emitted);
-                }
-                putchar(')');
-            }
-            putchar('\n');
-            ir_block(generator, node->left, false);
-            printf("endfunc\n");
-            ir_pop_scope(generator);
-        }
-    }
-    free(generator);
-    return true;
-}
-
 int main(int argc, char **argv) {
     int source_size;
     char *source;
     const char *source_path = NULL;
     bool ir_mode = false;
+    bool ir_requested = false;
     bool check_only = false;
+    bool optimize_mode = false;
+    bool no_optimization_mode = false;
     Parser parser = {0};
     Node *program;
     Semantic semantic = {0};
     for (int index = 1; index < argc; index++) {
-        if (strcmp(argv[index], "--ir") == 0 || strcmp(argv[index], "-O0") == 0) {
+        if (strcmp(argv[index], "--ir") == 0) {
             ir_mode = true;
+            ir_requested = true;
+        } else if (strcmp(argv[index], "-O0") == 0) {
+            ir_mode = true;
+            no_optimization_mode = true;
         } else if (strcmp(argv[index], "--check") == 0) {
             ir_mode = true;
             check_only = true;
         } else if (strcmp(argv[index], "-O1") == 0) {
-            fprintf(stderr, "Erro: otimização -O1 ainda não está implementada.\n");
-            return 1;
+            ir_mode = true;
+            optimize_mode = true;
         } else if (argv[index][0] == '-') {
             fprintf(stderr, "Opção desconhecida: %s\n", argv[index]);
             return 1;
         } else if (source_path == NULL) {
             source_path = argv[index];
         } else {
-            fprintf(stderr, "Uso: minic [--ir|-O0|--check] <arquivo.c>\n");
+            fprintf(stderr, "Uso: minic [--ir|-O0|-O1|--check] <arquivo.c>\n");
             return 1;
         }
     }
-    if (source_path == NULL || (check_only && argc > 3)) {
-        fprintf(stderr, "Uso: minic [--ir|-O0|--check] <arquivo.c>\n");
+    if (source_path == NULL ||
+        (check_only && (ir_requested || optimize_mode || no_optimization_mode)) ||
+        (optimize_mode && no_optimization_mode)) {
+        fprintf(stderr, "Uso: minic [--ir|-O0|-O1|--check] <arquivo.c>\n");
         return 2;
     }
     source = read_file(source_path, &source_size);
@@ -1445,7 +1055,36 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Erro semântico: o programa deve definir exatamente uma função main.\n");
             result = 4;
         } else {
-            if (!generate_ir(program)) result = 1;
+            if (optimize_mode) {
+                FILE *temporary = tmpfile();
+                if (temporary == NULL || !generate_ir(program, temporary)) {
+                    if (temporary != NULL) fclose(temporary);
+                    result = 1;
+                } else if (fseek(temporary, 0, SEEK_END) != 0) {
+                    fprintf(stderr, "Erro: não foi possível ler a IR temporária.\n");
+                    fclose(temporary);
+                    result = 1;
+                } else {
+                    long length = ftell(temporary);
+                    if (length < 0 || fseek(temporary, 0, SEEK_SET) != 0) {
+                        fprintf(stderr, "Erro: não foi possível ler a IR temporária.\n");
+                        result = 1;
+                    } else {
+                        char *intermediate = (char *)malloc((size_t)length + 1);
+                        if (intermediate == NULL) {
+                            fprintf(stderr, "Erro: memória insuficiente para otimizar a IR.\n");
+                            result = 1;
+                        } else {
+                            size_t read = fread(intermediate, 1, (size_t)length, temporary);
+                            intermediate[read] = '\0';
+                            if (read != (size_t)length || !optimize_ir_text(intermediate, stdout))
+                                result = 1;
+                            free(intermediate);
+                        }
+                    }
+                    fclose(temporary);
+                }
+            } else if (!generate_ir(program, stdout)) result = 1;
         }
     }
     token_list_liberar(&parser.tokens);
